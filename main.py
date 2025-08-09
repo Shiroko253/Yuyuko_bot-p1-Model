@@ -97,7 +97,14 @@ for filename in os.listdir('./events'):
         except Exception as e:
             logging.error(f"Failed to load event module events.{filename[:-3]}: {e}")
 
+def check_license():
+    license_file = os.path.join(os.path.dirname(__file__), "LICENSE")
+    if not os.path.exists(license_file):
+        logging.warning("LICENSE file missing! Please include the original LICENSE to comply with terms.")
+        print("⚠️ This project is licensed under MIT. Ensure you include the LICENSE file.")
+
 # 啟動 bot
 if __name__ == "__main__":
+    check_license()
     asyncio.run(setup_bot())
     bot.run(TOKEN)
