@@ -34,7 +34,6 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-
 class DataManager:
     def __init__(self):
         self.balance = self.load_json("economy/balance.json", {})
@@ -82,12 +81,10 @@ class DataManager:
         self.save_json("config/invalid_bet_count.json", self.invalid_bet_count)
         self.save_json("config/bot_status.json", self.bot_status)
 
-
 async def setup_bot():
     bot.data_manager = DataManager()
     bot.session = aiohttp.ClientSession()
     logging.info("Initialized DataManager and ClientSession")
-
 
 @bot.event
 async def on_close():
@@ -95,19 +92,25 @@ async def on_close():
     if hasattr(bot, "session"):
         await bot.session.close()
 
-
 # 強制檢查 LICENSE
 def check_license():
+    """Check if LICENSE file exists and contains GPL-3.0 text."""
     license_file = os.path.join(os.path.dirname(__file__), "LICENSE")
-    if not os.path.exists(license_file):
-        logging.error("LICENSE file missing! The bot cannot start without a valid LICENSE.")
-        exit(1)
 
-    with open(license_file, "r", encoding="utf-8") as f:
-        content = f.read()
-        if "GNU GENERAL PUBLIC LICENSE" not in content:
-            logging.error("Invalid LICENSE content! Please include the original GPL-3.0 license.")
-            exit(1)
+    if not os.path.isfile(license_file):
+        logging.critical("LICENSE file missing! The bot cannot start without a valid LICENSE.")
+        sys.exit(1)
+
+    try:
+        with open(license_file, "r", encoding="utf-8") as f:
+            content = f.read()
+    except OSError as e:
+        logging.critical(f"Error reading LICENSE file: {e}")
+        sys.exit(1)
+
+    if "GNU GENERAL PUBLIC LICENSE" not in content:
+        logging.critical("Invalid LICENSE content! Please include the original GPL-3.0 license.")
+        sys.exit(1)
 
 # 載入 commands/ 與 events/
 def load_extensions():
@@ -131,3 +134,4 @@ if __name__ == "__main__":
         bot.run(TOKEN)
     except KeyboardInterrupt:
         logging.info("Bot stopped manually.")
+
