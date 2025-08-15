@@ -1,14 +1,16 @@
-import discord
-from discord.ext import commands
-import json
-import yaml
-import logging
 import os
 import sys
-import aiohttp
+import logging
+import json
+import yaml
+import sqlite3
 from dotenv import load_dotenv
+import discord
+from discord.ext import commands
 
-# 設定日誌
+from license_check import check_license  # <-- 加入這行
+
+# ----------- 日誌設定 -----------
 os.makedirs("logs", exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
@@ -19,30 +21,57 @@ logging.basicConfig(
     ]
 )
 
-# 載入 .env
+# ----------- LICENSE 檢查（最前面執行）-----------
+check_license(auto_fix=True)   # <-- 這裡執行
+
+# ----------- 載入 .env -----------
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
-    logging.critical("BOT_TOKEN not found in .env file")
-    sys.exit(1)
+    logging.error("BOT_TOKEN not found in .env file")
+    raise RuntimeError("Missing BOT_TOKEN in .env file")
 
-# 設定 Intents
+# ----------- 設定 Intents -----------
 intents = discord.Intents.default()
 intents.message_content = True
 intents.guilds = True
 intents.members = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = discord.Bot(intents=intents, auto_sync_commands=True)
 
+# ----------- DataManager 資料管理 -----------
 class DataManager:
     def __init__(self):
-        self.balance = self.load_json("economy/balance.json", {})
-        self.blackjack_data = self.load_json("config/blackjack_data.json", {})
-        self.invalid_bet_count = self.load_json("config/invalid_bet_count.json", {})
-        self.bot_status = self.load_json(
-            "config/bot_status.json",
-            {"disconnect_count": 0, "reconnect_count": 0, "last_event_time": None}
-        )
+        self.economy_dir = "economy"
+        self.config_dir = "config"
+        os.makedirs(self.economy_dir, exist_ok=True)
+        os.makedirs(self.config_dir, exist_ok=True)
+        self.initialize_json(f"{self.economy_dir}/balance.json")
+        self.initialize_json(f"{self.config_dir}/blackjack_data.json")
+        self.initialize_json(f"{self.config_dir}/invalid_bet_count.json")
+        self.initialize_json(f"{self.config_dir}/bot_status.json", {"disconnect_count": 0, "reconnect_count": 0, "last_event_time": None})
+        self.initialize_json(f"{self.config_dir}/dm_messages.json")
+
+        self.balance = self.load_json(f"{self.economy_dir}/balance.json")
+        self.blackjack_data = self.load_json(f"{self.config_dir}/blackjack_data.json")
+        self.invalid_bet_count = self.load_json(f"{self.config_dir}/invalid_bet_count.json")
+        self.bot_status = self.load_json(f"{self.config_dir}/bot_status.json", {"disconnect_count": 0, "reconnect_count": 0, "last_event_time": None})
+        self.dm_messages = self.load_json(f"{self.config_dir}/dm_messages.json")
+        self.black_hole_users = set()
+        self.init_db()
+
+    @staticmethod
+    def initialize_json(file, default=None):
+        if default is None:
+            default = {}
+        if not os.path.exists(file):
+            try:
+                os.makedirs(os.path.dirname(file), exist_ok=True)
+                with open(file, "w", encoding="utf-8") as f:
+                    json.dump(default, f, indent=4, ensure_ascii=False)
+                logging.info(f"Created empty JSON file: {file}")
+            except Exception as e:
+                logging.error(f"Failed to create JSON file {file}: {e}")
 
     @staticmethod
     def load_json(file, default=None):
@@ -75,63 +104,61 @@ class DataManager:
             logging.error(f"Failed to load YAML file {file}: {e}")
             return default
 
+    @staticmethod
+    def save_yaml(file, data):
+        try:
+            os.makedirs(os.path.dirname(file), exist_ok=True)
+            with open(file, "w", encoding="utf-8") as f:
+                yaml.safe_dump(data, f, allow_unicode=True)
+        except Exception as e:
+            logging.error(f"Failed to save YAML file {file}: {e}")
+
+    def init_db(self):
+        db_path = os.path.join(self.config_dir, "example.db")
+        try:
+            with sqlite3.connect(db_path) as conn:
+                c = conn.cursor()
+                c.execute('''CREATE TABLE IF NOT EXISTS UserMessages 
+                             (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                              user_id TEXT, 
+                              message TEXT, 
+                              repeat_count INTEGER DEFAULT 0, 
+                              is_permanent BOOLEAN DEFAULT FALSE,
+                              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+                c.execute('''CREATE TABLE IF NOT EXISTS BackgroundInfo 
+                             (user_id TEXT PRIMARY KEY, 
+                              info TEXT)''')
+                conn.commit()
+                logging.info("Initialized SQLite database")
+        except sqlite3.Error as e:
+            logging.error(f"Failed to initialize database: {e}")
+
     def save_all(self):
-        self.save_json("economy/balance.json", self.balance)
-        self.save_json("config/blackjack_data.json", self.blackjack_data)
-        self.save_json("config/invalid_bet_count.json", self.invalid_bet_count)
-        self.save_json("config/bot_status.json", self.bot_status)
+        self.save_json(f"{self.economy_dir}/balance.json", self.balance)
+        self.save_json(f"{self.config_dir}/blackjack_data.json", self.blackjack_data)
+        self.save_json(f"{self.config_dir}/invalid_bet_count.json", self.invalid_bet_count)
+        self.save_json(f"{self.config_dir}/bot_status.json", self.bot_status)
+        self.save_json(f"{self.config_dir}/dm_messages.json", self.dm_messages)
 
-async def setup_bot():
-    bot.data_manager = DataManager()
-    bot.session = aiohttp.ClientSession()
-    logging.info("Initialized DataManager and ClientSession")
+# ----------- 資源初始化 -----------
+bot.data_manager = DataManager()
+bot.start_time = __import__('time').time()
+bot.last_activity_time = bot.start_time
+bot.black_hole_users = set()
 
-@bot.event
-async def on_close():
-    """確保關閉 bot 時清理資源"""
-    if hasattr(bot, "session"):
-        await bot.session.close()
-
-# 強制檢查 LICENSE
-def check_license():
-    """Check if LICENSE file exists and contains GPL-3.0 text."""
-    license_file = os.path.join(os.path.dirname(__file__), "LICENSE")
-
-    if not os.path.isfile(license_file):
-        logging.critical("LICENSE file missing! The bot cannot start without a valid LICENSE.")
-        sys.exit(1)
-
+# ----------- 自動載入指令與事件 -----------
+for folder in ['commands', 'events']:
     try:
-        with open(license_file, "r", encoding="utf-8") as f:
-            content = f.read()
-    except OSError as e:
-        logging.critical(f"Error reading LICENSE file: {e}")
-        sys.exit(1)
-
-    if "GNU GENERAL PUBLIC LICENSE" not in content:
-        logging.critical("Invalid LICENSE content! Please include the original GPL-3.0 license.")
-        sys.exit(1)
-
-# 載入 commands/ 與 events/
-def load_extensions():
-    for folder, prefix in [("./commands", "commands"), ("./events", "events")]:
-        if not os.path.exists(folder):
-            continue
-        for filename in os.listdir(folder):
-            if filename.endswith(".py") and not filename.startswith("__"):
+        for filename in os.listdir(f'./{folder}'):
+            if filename.endswith('.py') and filename != '__init__.py':
+                ext_name = f'{folder}.{filename[:-3]}'
                 try:
-                    bot.load_extension(f"{prefix}.{filename[:-3]}")
-                    logging.info(f"Loaded module: {prefix}.{filename[:-3]}")
+                    bot.load_extension(ext_name)
+                    logging.info(f"Loaded {ext_name}")
                 except Exception as e:
-                    logging.error(f"Failed to load module {prefix}.{filename[:-3]}: {e}")
+                    logging.error(f"Failed to load {ext_name}: {e}")
+    except FileNotFoundError:
+        logging.warning(f"Folder not found: {folder}, skip loading.")
 
-
-if __name__ == "__main__":
-    check_license()
-    bot.loop.run_until_complete(setup_bot())  # 取代 asyncio.run()
-    load_extensions()
-    try:
-        bot.run(TOKEN)
-    except KeyboardInterrupt:
-        logging.info("Bot stopped manually.")
-
+# ----------- 啟動 Bot -----------
+bot.run(TOKEN)
