@@ -22,9 +22,7 @@ from config.responses import (
 # 設定日誌
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # 取得這個文件自己的目錄
-env_path = os.path.join(BASE_DIR, ".env")
-load_dotenv(dotenv_path=env_path)
+load_dotenv()
 AUTHOR_ID = int(os.getenv("AUTHOR_ID", 0))
 
 class OnMessage(commands.Cog):
