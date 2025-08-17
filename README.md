@@ -1,87 +1,112 @@
-# 歡迎使用 Yuyuko Bot
+# Welcome to Yuyuko Bot
 
-你好，使用者！我是 **Shiroko** —— Yuyuko Bot 的開發者。
+[🇨🇳 中文版本](Doc/README.zh-tw.md)
 
-感謝你使用我的 Discord 機器人，我真的非常感謝你的支持！
+Hello, user! I’m **Shiroko** — the developer of Yuyuko Bot.
 
-## 如何使用這個機器人
-
-* 點擊 [這裡邀請機器人](https://discord.com/oauth2/authorize?client_id=852046004550238258&permissions=15&scope=bot)
-* 機器人的主要語言是 **中文**
-
-~~## 功能介紹~~
-
-~~目前，機器人支援 AI 對話功能，以及一些預設的訊息偵測功能。~~
-
-~~詳細的訊息觸發條件與示例將在另一份文件中提供。~~
+Thank you for using my Discord bot, I truly appreciate your support!
 
 ---
 
-## 指令說明
+## Important Notice
 
-### 一般指令
-
-* `/about-bot` — 關於 Yuyuko 的資訊
-* `/invite` — 生成 Yuyuko 的邀請連結
-* `/time` — 查看 Yuyuko 已經閒置了多久
-* `/ping` — 查看 Yuyuko 與現世的延遲
-* `/server_info` — 查看伺服器資訊
-* `/user_info` — 查看用戶個人資料資訊
-* `/feedback` — 回報問題給 Yuyuko 讓開發者修復
-* `/quiz` — 快問快答小遊戲
-
-### 經濟系統
-
-> **注意：** 貨幣單位為「幽靈幣」，不與其他機器人共享。
-
-* `/balance` — 查看當前餘額
-* `/leaderboard` — 查看最富有的玩家與最高稅收排行榜
-* `/choose_job` — 選擇一份工作賺錢（特殊職業不可工作）
-* `/reset_job` — 重置你的職業選擇
-* `/work` — 執行工作（冷卻時間：60 秒）
-* `/shop` — 造訪商店購買解壓用品
-* `/backpack` — 查看你的物品欄
-* `/server_bank` — 查看 Yuyuko 的虛擬銀行
-* `/pay` — 轉帳給其他玩家
-
-### 管理員權限指令
-
-> **注意：** 機器人的角色必須位於角色列表的最上方才能使用。
-
-* `/ban` — 封禁使用者
-* `/kick` — 踢出使用者
-* `/start_giveaway` — 開始抽獎
-* `/timeout` — 將使用者禁言（閉嘴）
-* `/untimeout` — 解除禁言
-
-### 休閒釣魚
-
-* `/fish` — 開始釣魚（可能釣到垃圾…）
-* `/fish_back` — 查看或展示你的漁獲物品欄
-* `/fish_shop` — 出售漁獲
-
-### 賭博
-
-* `/blackjack` — 玩 21 點（特殊職業獲得 2 倍獎勵！）
-
-### 開發者專用指令
-
-> 這些指令對一般使用者與管理員不可用。
-
-* `/shutdown` — 讓 Yuyuko 休息
-* `/restart` — 重啟機器人
-* `/addmoney` — 為使用者增加金錢
-* `/removemoney` — 移除使用者的金錢
-* `/tax` — 「我宣布徵收說話稅！」
-* `/join` — 讓 Yuyuko 加入語音頻道
-* `/leave` — 讓 Yuyuko 離開語音頻道
+**Unauthorized copying or code theft is strictly prohibited.**
+All translations and documentation belong to the original developer and translators.
+If you wish to redistribute, please keep the full source and license information intact without modification or concealment.
 
 ---
 
-## 授權條款
+---
 
-**GNU 通用公共授權條款 第三版（GPL v3.0）**
+## Current Features
+
+The current version of **Yuyuko Bot** is fully **modularized with Cogs**,
+which allows for easier maintenance and future expansion.
+
+### Differences from the Previous Version
+
+| Previous Version                          | Current Version                             |
+| ----------------------------------------- | ------------------------------------------- |
+| All `@bot.slash_command` in a single file | Fully modularized with **Cogs**             |
+| Hard to maintain and expand               | Easy maintenance and scalable design        |
+| Commands tightly coupled with core code   | Commands separated into independent modules |
+| Limited flexibility                       | Highly flexible and future-proof            |
 
 ---
 
-**嚴謹盜載：** 禁止任何偷竊或盜取代碼行為。本文件之內容翻譯與整理版權歸原開發者與譯者所有，轉載請保留完整出處與授權資訊，不得刪改或隱匿。
+## Command List
+
+### General Commands
+
+| Command        | Description                                  |
+| -------------- | -------------------------------------------- |
+| `/about-bot`   | Information about Yuyuko                     |
+| `/invite`      | Generate Yuyuko’s invitation link            |
+| `/time`        | Check how long Yuyuko has been idle          |
+| `/ping`        | Check Yuyuko’s latency with the real world   |
+| `/server_info` | View server information                      |
+| `/user_info`   | View user profile information                |
+| `/feedback`    | Report issues to Yuyuko for developer fixing |
+| `/quiz`        | Quick quiz mini-game                         |
+
+### Economy System
+
+> **Note:** Currency unit = **Ghost Coins**, not shared with other bots.
+
+| Command        | Description                                           |
+| -------------- | ----------------------------------------------------- |
+| `/balance`     | View current balance                                  |
+| `/leaderboard` | View richest players & tax leaderboard                |
+| `/choose_job`  | Choose a job to earn money (special jobs cannot work) |
+| `/reset_job`   | Reset your chosen job                                 |
+| `/work`        | Perform your job (cooldown: 60s)                      |
+| `/shop`        | Visit the shop to buy stress-relief items             |
+| `/backpack`    | View your inventory                                   |
+| `/server_bank` | View Yuyuko’s virtual bank                            |
+| `/pay`         | Transfer money to another player                      |
+
+### Admin Commands
+
+> **Note:** Yuyuko’s role must be at the top of the role list to use these.
+
+| Command           | Description           |
+| ----------------- | --------------------- |
+| `/ban`            | Ban a user            |
+| `/kick`           | Kick a user           |
+| `/start_giveaway` | Start a giveaway      |
+| `/timeout`        | Timeout a user (mute) |
+| `/untimeout`      | Remove timeout        |
+
+### Fishing
+
+| Command      | Description                            |
+| ------------ | -------------------------------------- |
+| `/fish`      | Start fishing (you might catch trash…) |
+| `/fish_back` | View or display your fishing inventory |
+| `/fish_shop` | Sell your catches                      |
+
+### Gambling
+
+| Command      | Description                                       |
+| ------------ | ------------------------------------------------- |
+| `/blackjack` | Play Blackjack (special jobs get **2x rewards**!) |
+
+### Developer-Only Commands
+
+> These are not available for normal users or admins.
+
+| Command        | Description                        |
+| -------------- | ---------------------------------- |
+| `/shutdown`    | Shut down Yuyuko                   |
+| `/restart`     | Restart the bot                    |
+| `/addmoney`    | Add money to a user                |
+| `/removemoney` | Remove money from a user           |
+| `/tax`         | “I hereby declare a speaking tax!” |
+| `/join`        | Let Yuyuko join a voice channel    |
+| `/leave`       | Let Yuyuko leave a voice channel   |
+
+---
+
+## License
+
+**GNU General Public License v3.0 (GPL v3.0)**
