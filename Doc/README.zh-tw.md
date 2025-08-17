@@ -1,5 +1,7 @@
 # 歡迎使用 Yuyuko Bot
 
+[English Version](#welcome-to-yuyuko-bot)
+
 你好，使用者！我是 **Shiroko** —— Yuyuko Bot 的開發者。
 
 感謝你使用我的 Discord 機器人，我真的非常感謝你的支持！
