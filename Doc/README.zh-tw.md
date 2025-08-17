@@ -1,6 +1,6 @@
 # 歡迎使用 Yuyuko Bot
 
-[English Version](https://github.com/Shiroko253/Yuyuko_bot-p1-Model/)
+[English Version](https://github.com/Shiroko253/Yuyuko_bot-p1-Model/blob/main/README.md)
 
 你好，使用者！我是 **Shiroko** —— Yuyuko Bot 的開發者。
 
