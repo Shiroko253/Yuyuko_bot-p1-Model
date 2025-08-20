@@ -9,17 +9,17 @@ class UserInfo(commands.Cog):
     def __init__(self, bot: discord.Bot):
         self.bot = bot
 
-    @commands.slash_command(name="user_info", description="幽幽子為你窺探用戶的靈魂資訊～")
+    @discord.slash_command(name="user_info", description="幽幽子為你窺探用戶的靈魂資訊～")
     async def user_info(self, ctx: discord.ApplicationContext, user: discord.Member = None):
         user = user or ctx.author
         guild_id = str(ctx.guild.id) if ctx.guild else "DM"
         user_id = str(user.id)
         tz = ZoneInfo('Asia/Taipei')
 
-        # 初始化 user_data
+        # 初始化 user_data，職業資訊正確路徑為 config/config_user.yml
         data_manager = getattr(self.bot, "data_manager", None)
-        if data_manager and hasattr(data_manager, "load_json"):
-            user_data = data_manager.load_json(f"{getattr(data_manager, 'economy_dir', '.')}/user_data.json")
+        if data_manager and hasattr(data_manager, "load_yaml"):
+            user_data = data_manager.load_yaml("config/config_user.yml")
         else:
             user_data = {}
 
