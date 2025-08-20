@@ -8,7 +8,7 @@ class ChooseJob(commands.Cog):
         self.bot = bot
         self.logger = logging.getLogger(__name__)
 
-    @commands.slash_command(name="choose_job", description="選擇你的工作！")
+    @discord.slash_command(name="choose_job", description="選擇你的工作！")
     async def choose_job(self, ctx: discord.ApplicationContext):
         guild_id = str(ctx.guild.id)
         user_id = str(ctx.user.id)
@@ -145,7 +145,7 @@ class ChooseJob(commands.Cog):
             ).set_footer(text="每個職業有不同收入範圍")
             # 傳送訊息並取得 message 對象
             message = await ctx.respond(embed=embed, view=view)
-            view.message = await message.original_response()
+            view.message = message  # 不用 original_response
         except Exception as e:
             self.logger.exception(f"Failed to send job selection message for {user_id}: {e}")
             embed = discord.Embed(
