@@ -7,7 +7,7 @@ class AboutMe(commands.Cog):
     def __init__(self, bot: discord.Bot):
         self.bot = bot
 
-    @commands.slash_command(name="about-me", description="關於幽幽子的一切～")
+    @discord.slash_command(name="about-me", description="關於幽幽子的一切～")
     async def about_me(self, ctx: discord.ApplicationContext):
         if not self.bot.user:
             await ctx.respond(
