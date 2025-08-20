@@ -31,7 +31,7 @@ class RemoveMoney(commands.Cog):
     def __init__(self, bot: discord.Bot):
         self.bot = bot
 
-    @commands.slash_command(name="removemoney", description="移除用户幽靈幣（特定用户专用）")
+    @discord.slash_command(name="removemoney", description="移除用户幽靈幣（特定用户专用）")
     async def removemoney(self, ctx: discord.ApplicationContext, member: discord.Member, amount: str):
         try:
             if ctx.user.id != AUTHOR_ID:
