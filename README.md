@@ -1,6 +1,6 @@
 # Welcome to Yuyuko Bot
 
-[🇨🇳 中文版本](Doc/README.zh-tw.md)
+[🇨🇳 中文版本](doc/README.zh-tw.md)
 
 Hello, user! I’m **Shiroko** — the developer of Yuyuko Bot.
 
@@ -8,19 +8,9 @@ Thank you for using my Discord bot, I truly appreciate your support!
 
 ---
 
-## Important Notice
-
-**Unauthorized copying or code theft is strictly prohibited.**
-All translations and documentation belong to the original developer and translators.
-If you wish to redistribute, please keep the full source and license information intact without modification or concealment.
-
----
-
----
-
 ## Current Features
 
-The current version of **Yuyuko Bot** is fully **modularized with Cogs**,
+The current version of **Yuyuko Bot** is fully **modularized with Cogs**,  
 which allows for easier maintenance and future expansion.
 
 ### Differences from the Previous Version
@@ -109,4 +99,4 @@ which allows for easier maintenance and future expansion.
 
 ## License
 
-**GNU General Public License v3.0 (GPL v3.0)**
+[**GNU General Public License v3.0 (GPL v3.0)**](./LICENSE)
