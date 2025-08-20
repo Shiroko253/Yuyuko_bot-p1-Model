@@ -1,21 +1,21 @@
 import discord
 from discord.ext import commands
 import random
-import os
 
-FEEDBACK_CHANNEL_ID = int(os.getenv("FEEDBACK_CHANNEL_ID", 1372560258228162560))
+FEEDBACK_CHANNEL_ID = 1372560258228162560
 
 class Feedback(commands.Cog):
     def __init__(self, bot: discord.Bot):
         self.bot = bot
 
-    @commands.slash_command(name="feedback", description="幽幽子聆聽你的靈魂之聲～提交反饋吧！")
+    @discord.slash_command(name="feedback", description="幽幽子聆聽你的靈魂之聲～提交反饋吧！")
     async def feedback(self, ctx: discord.ApplicationContext, description: str = None):
         """Command to collect user feedback with category buttons."""
 
         class FeedbackView(discord.ui.View):
-            def __init__(self):
+            def __init__(self, bot):
                 super().__init__(timeout=300)
+                self.bot = bot
 
             async def handle_feedback(self, interaction: discord.Interaction, category: str):
                 feedback_channel = self.bot.get_channel(FEEDBACK_CHANNEL_ID)
@@ -85,7 +85,7 @@ class Feedback(commands.Cog):
             async def other_issue_button(self, button, interaction):
                 await self.handle_feedback(interaction, "其他問題")
 
-        view = FeedbackView()
+        view = FeedbackView(self.bot)
         if description:
             await ctx.respond(
                 f"你的靈魂之聲我聽到了～「{description}」\n請選擇以下類別，讓我更好地理解你的心意吧：",
