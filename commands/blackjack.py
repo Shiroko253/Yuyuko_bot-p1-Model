@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 import random
 import logging
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Any
 
 # -- 21點遊戲邏輯 --
 class BlackjackGame:
@@ -74,16 +74,15 @@ class BlackjackButtons(discord.ui.View):
         self, 
         game: BlackjackGame, 
         data_manager: Any, 
-        interaction: discord.Interaction, 
         guild_id: str, 
         user_id: str
     ):
         super().__init__(timeout=180)
         self.game = game
         self.data_manager = data_manager
-        self.interaction = interaction
         self.guild_id = str(guild_id)
         self.user_id = str(user_id)
+        self.message = None
 
     async def on_timeout(self) -> None:
         try:
@@ -93,14 +92,15 @@ class BlackjackButtons(discord.ui.View):
                 self.data_manager.balance[self.guild_id][self.user_id] += bet
                 self.data_manager.blackjack_data[self.guild_id][self.user_id]["game_status"] = "ended"
                 self.data_manager.save_all()
-                await self.interaction.edit_original_response(
-                    embed=discord.Embed(
-                        title="🌸 遊戲超時，靈魂休息了～🌸",
-                        description=f"時間到了，遊戲已結束。退還你的賭注 {bet:.2f} 幽靈幣，下次再來挑戰幽幽子吧！",
-                        color=discord.Color.blue()
-                    ).set_footer(text="如需繼續，請再發起新遊戲！"),
-                    view=None
-                )
+                if self.message:
+                    await self.message.edit(
+                        embed=discord.Embed(
+                            title="🌸 遊戲超時，靈魂休息了～🌸",
+                            description=f"時間到了，遊戲已結束。退還你的賭注 {bet:.2f} 幽靈幣，下次再來挑戰幽幽子吧！",
+                            color=discord.Color.blue()
+                        ).set_footer(text="如需繼續，請再發起新遊戲！"),
+                        view=None
+                    )
         except Exception as e:
             logging.exception(f"Timeout interaction failed: {e}")
 
@@ -261,12 +261,11 @@ class BlackjackButtons(discord.ui.View):
             logging.exception(f"Double down interaction failed: {e}")
             await interaction.followup.send("遊戲交互已失效，請重新開始一局！", ephemeral=True)
 
-# -- 指令入口 --
 class Blackjack(commands.Cog):
     def __init__(self, bot: discord.Bot):
         self.bot = bot
 
-    @commands.slash_command(
+    @discord.slash_command(
         name="blackjack",
         description="幽幽子與你共舞一場21點遊戲～"
     )
@@ -278,19 +277,20 @@ class Blackjack(commands.Cog):
             guild_id = str(ctx.guild.id)
             config = data_manager.load_yaml("config/config_user.yml")
 
-            # 下注上下限
-            if not 1 <= bet <= 10000000000000000:
+            data_manager.balance = data_manager.load_json(f"{data_manager.economy_dir}/balance.json")
+            data_manager.blackjack_data = data_manager.load_json(f"{data_manager.config_dir}/blackjack_data.json")
+
+            if bet < 1:
                 await ctx.respond(
                     embed=discord.Embed(
                         title="🌸 賭注超出範圍 🌸",
-                        description="賭注必須介於 1 與 10,000,000,000,000,000 幽靈幣之間哦～",
+                        description="賭注必須介於幽靈幣哦～",
                         color=discord.Color.red()
                     ).set_footer(text="請合理下注"),
                     ephemeral=True
                 )
                 return
 
-            # 檢查是否有正在進行的遊戲
             if data_manager.blackjack_data.get(guild_id, {}).get(user_id, {}).get("game_status") == "ongoing":
                 await ctx.respond(embed=discord.Embed(
                     title="🌸 靈魂尚未休息！🌸",
@@ -299,7 +299,6 @@ class Blackjack(commands.Cog):
                 ).set_footer(text="完成遊戲後才能開始新的一局"))
                 return
 
-            # 檢查無效賭注
             if bet <= 0:
                 data_manager.invalid_bet_count.setdefault(guild_id, {}).setdefault(user_id, 0)
                 data_manager.invalid_bet_count[guild_id][user_id] += 1
@@ -323,7 +322,6 @@ class Blackjack(commands.Cog):
                 ).set_footer(text="請誠實遊玩"))
                 return
 
-            # 檢查餘額
             user_balance = round(data_manager.balance.get(guild_id, {}).get(user_id, 0), 2)
             if user_balance < bet:
                 await ctx.respond(embed=discord.Embed(
@@ -333,23 +331,25 @@ class Blackjack(commands.Cog):
                 ).set_footer(text="請補充幽靈幣再參與遊戲"))
                 return
 
-            # 初始化遊戲
             game = BlackjackGame()
             game.shuffle_deck()
             player_cards, dealer_cards = game.deal_initial_cards()
 
-            # 初始化餘額、身份
             data_manager.balance.setdefault(guild_id, {})[user_id] = user_balance - bet
             is_gambler = config.get(guild_id, {}).get(user_id, {}).get('job') == '賭徒'
 
-            data_manager.blackjack_data.setdefault(guild_id, {})[user_id] = {
+            if guild_id not in data_manager.blackjack_data:
+                data_manager.blackjack_data[guild_id] = {}
+            if user_id not in data_manager.blackjack_data[guild_id]:
+                data_manager.blackjack_data[guild_id][user_id] = {}
+            data_manager.blackjack_data[guild_id][user_id].update({
                 "player_cards": player_cards,
                 "dealer_cards": dealer_cards,
                 "bet": bet,
                 "game_status": "ongoing",
                 "double_down_used": False,
                 "is_gambler": is_gambler
-            }
+            })
 
             player_total = game.calculate_hand(player_cards)
             if player_total == 21:
@@ -376,9 +376,10 @@ class Blackjack(commands.Cog):
                 color=discord.Color.from_rgb(255, 182, 193)
             ).set_footer(text="選擇你的命運吧～")
 
-            interaction = await ctx.respond(embed=embed)
-            view = BlackjackButtons(game, data_manager, interaction, guild_id, user_id)
-            await interaction.edit_original_response(view=view)
+            msg = await ctx.respond(embed=embed, view=None)
+            view = BlackjackButtons(game, data_manager, guild_id, user_id)
+            view.message = await msg.original_response()
+            await view.message.edit(view=view)
 
         except Exception as e:
             logging.exception(f"Blackjack command failed: {e}")
