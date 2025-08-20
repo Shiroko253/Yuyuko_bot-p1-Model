@@ -19,7 +19,7 @@ class Work(commands.Cog):
         self.bot = bot
         self.logger = logging.getLogger(__name__)
 
-    @commands.slash_command(
+    @discord.slash_command(
         name="work",
         description="執行你的工作並賺取幽靈幣！"
     )
