@@ -8,7 +8,7 @@ class ResetJob(commands.Cog):
         self.bot = bot
         self.logger = logging.getLogger(__name__)
 
-    @commands.slash_command(
+    @discord.slash_command(
         name="reset_job",
         description="重置自己的職業"
     )
@@ -85,7 +85,7 @@ class ResetJob(commands.Cog):
         try:
             view = ConfirmReset(self)
             response_msg = await ctx.respond(embed=embed, view=view, ephemeral=True)
-            view.message = await response_msg.original_response()
+            view.message = response_msg  # 直接設為 response_msg，不用 original_response()
         except Exception as e:
             self.logger.exception(f"Failed to send reset_job view for {user_id}: {e}")
             await ctx.respond("職業重置互動建立失敗，請稍後再試或使用 /feedback 回報作者。", ephemeral=True)
