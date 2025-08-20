@@ -8,7 +8,7 @@ class Balance(commands.Cog):
     def __init__(self, bot: discord.Bot):
         self.bot = bot
 
-    @commands.slash_command(
+    @discord.slash_command(
         name="balance",
         description="幽幽子為你窺探幽靈幣的數量～"
     )
@@ -26,7 +26,7 @@ class Balance(commands.Cog):
                 return f"{num:.2f}"
 
         try:
-            await ctx.defer(ephemeral=True)
+            await ctx.defer(ephemeral=False)
 
             if ctx.guild is None:
                 await ctx.respond(
@@ -44,10 +44,13 @@ class Balance(commands.Cog):
             guild_id = str(ctx.guild.id)
             user_id = str(ctx.user.id)
 
+            # 防止 KeyError
             if guild_id not in user_balance:
                 user_balance[guild_id] = {}
+            if user_id not in user_balance[guild_id]:
+                user_balance[guild_id][user_id] = 0
 
-            balance = user_balance[guild_id].get(user_id, 0)
+            balance = user_balance[guild_id][user_id]
 
             yuyuko_comments = [
                 "嘻嘻，你的幽靈幣數量真有趣呢～",
@@ -69,7 +72,7 @@ class Balance(commands.Cog):
                 color=discord.Color.from_rgb(255, 182, 193)
             ).set_footer(text=random.choice(yuyuko_comments))
 
-            await ctx.respond(embed=embed, ephemeral=True)
+            await ctx.respond(embed=embed, ephemeral=False)
 
         except Exception as e:
             logging.exception(f"Unexpected error in balance command: {e}")
