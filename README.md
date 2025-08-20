@@ -1,6 +1,18 @@
-# Welcome to Yuyuko Bot
+<div align="center">
 
-[🇨🇳 中文版本](doc/README.zh-tw.md)
+<hr>
+
+<p>
+  <strong>🌏 Language / 語言切換：</strong>
+  <a href="doc/README.zh-tw.md">🇨🇳 中文版（繁體）</a> | 
+  <a href="README.md">🇺🇸 English</a>
+</p>
+
+<hr>
+
+</div>
+
+# Welcome to Yuyuko Bot
 
 Hello, user! I’m **Shiroko** — the developer of Yuyuko Bot.
 
