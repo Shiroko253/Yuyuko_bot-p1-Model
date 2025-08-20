@@ -8,7 +8,7 @@ class ServerInfo(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.slash_command(
+    @discord.slash_command(
         name="server_info",
         description="幽幽子為你窺探群組的靈魂資訊～"
     )
@@ -108,7 +108,7 @@ class ServerInfo(commands.Cog):
             button.callback = button_callback
             view.add_item(button)
 
-            await ctx.respond(embed=embed, view=view, ephemeral=True)
+            await ctx.respond(embed=embed, view=view, ephemeral=False)
             logging.info(f"Server info command executed by {ctx.author} in {guild_name}")
 
         except Exception as e:
