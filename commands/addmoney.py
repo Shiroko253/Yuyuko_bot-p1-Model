@@ -3,6 +3,7 @@ import discord
 from discord.ext import commands
 import logging
 import os
+import traceback
 
 AUTHOR_ID = int(os.getenv("AUTHOR_ID", 0))
 
@@ -31,7 +32,7 @@ class AddMoney(commands.Cog):
     def __init__(self, bot: discord.Bot):
         self.bot = bot
 
-    @commands.slash_command(name="addmoney", description="给用户增加幽靈幣（特定用户专用）")
+    @discord.slash_command(name="addmoney", description="给用户增加幽靈幣（特定用户专用）")
     async def addmoney(self, ctx: discord.ApplicationContext, member: discord.Member, amount: str):
         try:
             if ctx.user.id != AUTHOR_ID:
@@ -54,6 +55,11 @@ class AddMoney(commands.Cog):
             data_manager = self.bot.data_manager
             user_balance = data_manager.load_json(f"{data_manager.economy_dir}/balance.json")
             user_balance = convert_float_to_decimal(user_balance)
+
+            # 容錯：確保 guild 可用
+            if not ctx.guild:
+                await ctx.respond("❌ 本指令僅限伺服器中使用。", ephemeral=True)
+                return
 
             guild_id = str(ctx.guild.id)
             recipient_id = str(member.id)
@@ -82,8 +88,16 @@ class AddMoney(commands.Cog):
             logging.info(f"管理员 {ctx.user.id} 给 {member.id} 增加了 {amount_decimal:.2f} 幽靈幣，当前余额：{user_balance[guild_id][recipient_id]:.2f}")
 
         except Exception as e:
-            logging.error(f"addmoney 指令執行錯誤：{e}")
+            logging.error(f"addmoney 指令執行錯誤：{e}\n{traceback.format_exc()}")
             await ctx.respond("❌ 执行命令时发生错误，请稍后再试。", ephemeral=True)
+            # 如果是作者且可直接發DM，傳遞詳細traceback
+            if AUTHOR_ID and ctx.user.id != AUTHOR_ID:
+                owner = self.bot.get_user(AUTHOR_ID)
+                if owner:
+                    try:
+                        await owner.send(f"addmoney debug error:\n```\n{traceback.format_exc()}\n```")
+                    except Exception:
+                        pass
 
 def setup(bot: discord.Bot):
     bot.add_cog(AddMoney(bot))
