@@ -83,6 +83,7 @@ which allows for easier maintenance and future expansion.
 | `/start_giveaway` | Start a giveaway      | `/start_giveaway Prize`|
 | `/timeout`        | Timeout a user (mute) | `/timeout @user 10`    |
 | `/untimeout`      | Remove timeout        | `/untimeout @user`     |
+| `/tax`         | “I hereby declare a speaking tax!” | `/tax`       |
 
 ### Fishing
 
@@ -108,7 +109,6 @@ which allows for easier maintenance and future expansion.
 | `/restart`     | Restart the bot                    | `/restart`             |
 | `/addmoney`    | Add money to a user                | `/addmoney @user 500`  |
 | `/removemoney` | Remove money from a user           | `/removemoney @user 50`|
-| `/tax`         | “I hereby declare a speaking tax!” | `/tax`                 |
 | `/join`        | Let Yuyuko join a voice channel    | `/join`                |
 | `/leave`       | Let Yuyuko leave a voice channel   | `/leave`               |
 
