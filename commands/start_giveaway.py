@@ -68,8 +68,8 @@ class Giveaway(commands.Cog):
     async def start_giveaway(
         self,
         ctx: discord.ApplicationContext,
-        duration: int = discord.Option(..., description="抽獎持續時間（秒）"),
-        prize: str = discord.Option(..., description="獎品名稱")
+        duration: int = discord.Option(description="抽獎持續時間（秒）"),
+        prize: str = discord.Option(description="獎品名稱")
     ):
         if not ctx.user.guild_permissions.administrator:
             await ctx.respond("❌ 你需要管理員權限才能使用此指令。", ephemeral=True)
@@ -93,7 +93,6 @@ class Giveaway(commands.Cog):
         view = GiveawayView(self.bot, ctx.guild.id, prize, duration, timeout=duration)
 
         await ctx.respond(embed=embed, view=view)
-        # 拿到已發送的訊息
         message = await ctx.interaction.original_response()
 
         active_giveaways[ctx.guild.id] = {
