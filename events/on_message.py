@@ -5,7 +5,6 @@ import random
 import asyncio
 import time
 from datetime import datetime
-from dotenv import load_dotenv
 import os
 import json
 from config.responses import (
@@ -22,12 +21,14 @@ from config.responses import (
 # 設定日誌
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-load_dotenv()
 AUTHOR_ID = int(os.getenv("AUTHOR_ID", 0))
 
 class OnMessage(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        # 初始化黑洞用戶狀態
+        if not hasattr(self.bot, "black_hole_users"):
+            self.bot.black_hole_users = set()
 
     def load_json(self, file, default={}):
         """載入 JSON 檔案"""
@@ -59,6 +60,9 @@ class OnMessage(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
+        # 更新機器人最後活動時間
+        self.bot.last_activity_time = time.time()
+
         if message.author == self.bot.user or message.webhook_id:
             return
 
@@ -81,9 +85,9 @@ class OnMessage(commands.Cog):
             if idle_days >= 1:
                 await channel.send(f'幽幽子目前已待機了 **{idle_days:.2f} 天**')
             elif idle_hours >= 1:
-                await channel.send(f'幽幽子目前已待機了 **{idle_hours:.2f} 小时**')
+                await channel.send(f'幽幽子目前已待機了 **{idle_hours:.2f} 小時**')
             else:
-                await channel.send(f'幽幽子目前已待機了 **{idle_minutes:.2f} 分钟**')
+                await channel.send(f'幽幽子目前已待機了 **{idle_minutes:.2f} 分鐘**')
 
         # 私訊記錄
         if isinstance(message.channel, discord.DMChannel):
@@ -250,13 +254,9 @@ class OnMessage(commands.Cog):
                 return
             except discord.NotFound:
                 pass
-            if not hasattr(self.bot, "black_hole_users"):
-                self.bot.black_hole_users = set()
             self.bot.black_hole_users.add(message.author.id)
             await channel.send("見過星辰粉碎的樣子嗎")
         elif '釋放' in content:
-            if not hasattr(self.bot, "black_hole_users"):
-                self.bot.black_hole_users = set()
             if message.author.id not in self.bot.black_hole_users:
                 await channel.send("終結技能量不足")
                 return
