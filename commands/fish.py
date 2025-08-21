@@ -5,12 +5,13 @@ import random
 import asyncio
 
 class FishingButtons(discord.ui.View):
-    def __init__(self, author_id, latest_fish_data, ctx, data_manager):
+    def __init__(self, author_id, latest_fish_data, ctx, data_manager, cog):
         super().__init__(timeout=180)
         self.author_id = author_id
         self.latest_fish_data = latest_fish_data
         self.ctx = ctx
         self.data_manager = data_manager
+        self.cog = cog
 
     async def interaction_check(self, interaction: Interaction):
         if interaction.user.id != self.author_id:
@@ -35,9 +36,9 @@ class FishingButtons(discord.ui.View):
             button.label = "釣魚中..."
             await interaction.response.edit_message(view=self)
             await asyncio.sleep(2)
-            new_fish_data = self.ctx.cog.generate_fish_data(self.ctx.fish_data)
-            new_embed = self.ctx.cog.create_fishing_embed(new_fish_data, self.ctx.current_rod)
-            new_view = FishingButtons(self.author_id, new_fish_data, self.ctx, self.data_manager)
+            new_fish_data = self.cog.generate_fish_data(self.ctx.fish_data)
+            new_embed = self.cog.create_fishing_embed(new_fish_data, self.ctx.current_rod)
+            new_view = FishingButtons(self.author_id, new_fish_data, self.ctx, self.data_manager, self.cog)
             await interaction.edit_original_response(embed=new_embed, view=new_view)
         except discord.errors.NotFound:
             await interaction.followup.send("交互已失效，請重新開始釣魚！", ephemeral=True)
@@ -57,7 +58,6 @@ class FishingButtons(discord.ui.View):
             guild_id = str(self.ctx.guild.id)
             fishingpack_path = "config/fishingpack.json"
 
-            # 如果 main 有 bot.file_lock，這裡用它；否則 fallback 本地 asyncio.Lock
             file_lock = getattr(self.ctx.bot, "file_lock", asyncio.Lock())
 
             async with file_lock:
@@ -85,7 +85,6 @@ class Fish(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # 從 config/config.json 讀取 fish 種類
     def get_fish_data(self):
         data_manager = self.bot.data_manager
         try:
@@ -138,11 +137,11 @@ class Fish(commands.Cog):
 
         ctx.fish_data = fish_data
         ctx.current_rod = "魚竿"
-        ctx.cog = self  # 給View內部使用
+        # ctx.cog = self  # 移除這行
 
         latest_fish_data = self.generate_fish_data(fish_data)
         embed = self.create_fishing_embed(latest_fish_data, ctx.current_rod)
-        view = FishingButtons(ctx.user.id, latest_fish_data, ctx, self.bot.data_manager)
+        view = FishingButtons(ctx.user.id, latest_fish_data, ctx, self.bot.data_manager, self)
         await ctx.respond(embed=embed, view=view)
 
 def setup(bot):
