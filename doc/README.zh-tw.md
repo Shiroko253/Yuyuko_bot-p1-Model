@@ -83,6 +83,7 @@
 | `/start_giveaway`   | 開始抽獎  | `/start_giveaway Switch`  |
 | `/timeout`          | 禁言使用者 | `/timeout @對象 10`       |
 | `/untimeout`        | 解除禁言  | `/untimeout @對象`        |
+| `/tax`           | 「我宣布徵收說話稅！」     | `/tax`                   |
 
 ### 釣魚系統
 
@@ -108,7 +109,6 @@
 | `/restart`       | 重啟機器人           | `/restart`               |
 | `/addmoney`      | 增加使用者金錢         | `/addmoney @對象 500`    |
 | `/removemoney`   | 移除使用者金錢         | `/removemoney @對象 50`  |
-| `/tax`           | 「我宣布徵收說話稅！」     | `/tax`                   |
 | `/join`          | 讓 Yuyuko 加入語音頻道 | `/join`                  |
 | `/leave`         | 讓 Yuyuko 離開語音頻道 | `/leave`                 |
 
