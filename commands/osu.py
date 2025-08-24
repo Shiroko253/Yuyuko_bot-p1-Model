@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from discord import app_commands
 import os
 
 OSU_CLIENT_ID = os.getenv("OSU_CLIENT_ID")
@@ -27,7 +28,6 @@ class OsuCog(commands.Cog):
         self.bot = bot
 
     async def get_osu_token(self):
-        # 簡單實現（未做快取，建議如需大流量可加入記憶體快取）
         payload = {
             "client_id": OSU_CLIENT_ID,
             "client_secret": OSU_CLIENT_SECRET,
@@ -62,38 +62,38 @@ class OsuCog(commands.Cog):
         self.bot.data_manager.save_json(OSU_DATA_PATH, data)
 
     # /osu_bind 主指令
-    @discord.slash_command(description="綁定你的 osu! 帳號")
-    async def osu_bind(self, ctx, osu_username: str):
-        await ctx.defer()
+    @app_commands.command(name="osu_bind", description="綁定你的 osu! 帳號")
+    async def osu_bind(self, interaction: discord.Interaction, osu_username: str):
+        await interaction.response.defer()
         token = await self.get_osu_token()
         user_data = await self.get_osu_user_data(osu_username, token, mode=0)
         if user_data.get("error"):
-            await ctx.respond(f"綁定失敗，找不到 osu! 用戶 `{osu_username}`。")
+            await interaction.followup.send(f"綁定失敗，找不到 osu! 用戶 `{osu_username}`。")
             return
         osu_id = str(user_data["id"])
         osu_name = user_data["username"]
         osu_data = self.load_osu_data()
-        osu_data[str(ctx.author.id)] = {
+        osu_data[str(interaction.user.id)] = {
             "osu_name": osu_name,
             "osu_id": osu_id
         }
         self.save_osu_data(osu_data)
-        await ctx.respond(f"已將你的 Discord 帳號綁定至 osu! 用戶 `{osu_name}` (id: {osu_id})！")
+        await interaction.followup.send(f"已將你的 Discord 帳號綁定至 osu! 用戶 `{osu_name}` (id: {osu_id})！")
 
     # /osu_profile 主指令
-    @discord.slash_command(description="查詢 osu! profile（可查自己或@他人）")
-    async def osu_profile(self, ctx, user: discord.User = None):
-        await ctx.defer()
-        user = user or ctx.author
+    @app_commands.command(name="osu_profile", description="查詢 osu! profile（可查自己或@他人）")
+    async def osu_profile(self, interaction: discord.Interaction, user: discord.User = None):
+        await interaction.response.defer()
+        user = user or interaction.user
         osu_data = self.load_osu_data()
         udata = osu_data.get(str(user.id))
         if not udata:
-            await ctx.respond(f"{user.mention} 尚未綁定 osu! 帳號。請先用 `/osu_bind <osu用戶名>` 綁定。")
+            await interaction.followup.send(f"{user.mention} 尚未綁定 osu! 帳號。請先用 `/osu_bind <osu用戶名>` 綁定。")
             return
         token = await self.get_osu_token()
         profile = await self.get_osu_user_data(udata["osu_id"], token, mode=0)
         if profile.get("error"):
-            await ctx.respond("查詢 osu! profile 時發生錯誤。")
+            await interaction.followup.send("查詢 osu! profile 時發生錯誤。")
             return
         stats = profile.get("statistics", {})
         embed = discord.Embed(
@@ -107,42 +107,40 @@ class OsuCog(commands.Cog):
         embed.add_field(name="pp", value=stats.get("pp", "N/A"), inline=True)
         embed.add_field(name="等級", value=stats.get("level", {}).get("current", 'N/A'), inline=True)
         embed.add_field(name="遊玩次數", value=stats.get("play_count", "N/A"), inline=True)
-        await ctx.respond(embed=embed)
+        await interaction.followup.send(embed=embed)
 
-    # /osu_recent 主指令 + 子指令（rs/rt/rm/rc）
-    @discord.slash_command(description="查詢 osu! 最近遊玩紀錄")
-    async def osu_recent(self, ctx):
-        pass  # 只為註冊 group，不會直接被呼叫
+    # /osu_recent 群組及子指令
+    osu_recent = app_commands.Group(name="osu_recent", description="查詢 osu! 最近遊玩紀錄")
 
-    @osu_recent.sub_command(name="rs", description="查詢 osu!standard 的最近遊玩")
-    async def osu_recent_rs(self, ctx, user: discord.User = None):
-        await self._osu_recent_mode(ctx, user, "std")
+    @osu_recent.command(name="rs", description="查詢 osu!standard 的最近遊玩")
+    async def osu_recent_rs(self, interaction: discord.Interaction, user: discord.User = None):
+        await self._osu_recent_mode(interaction, user, "std")
 
-    @osu_recent.sub_command(name="rt", description="查詢 osu!taiko 的最近遊玩")
-    async def osu_recent_rt(self, ctx, user: discord.User = None):
-        await self._osu_recent_mode(ctx, user, "taiko")
+    @osu_recent.command(name="rt", description="查詢 osu!taiko 的最近遊玩")
+    async def osu_recent_rt(self, interaction: discord.Interaction, user: discord.User = None):
+        await self._osu_recent_mode(interaction, user, "taiko")
 
-    @osu_recent.sub_command(name="rm", description="查詢 osu!mania 的最近遊玩")
-    async def osu_recent_rm(self, ctx, user: discord.User = None):
-        await self._osu_recent_mode(ctx, user, "mania")
+    @osu_recent.command(name="rm", description="查詢 osu!mania 的最近遊玩")
+    async def osu_recent_rm(self, interaction: discord.Interaction, user: discord.User = None):
+        await self._osu_recent_mode(interaction, user, "mania")
 
-    @osu_recent.sub_command(name="rc", description="查詢 osu!catch 的最近遊玩")
-    async def osu_recent_rc(self, ctx, user: discord.User = None):
-        await self._osu_recent_mode(ctx, user, "cbt")
+    @osu_recent.command(name="rc", description="查詢 osu!catch 的最近遊玩")
+    async def osu_recent_rc(self, interaction: discord.Interaction, user: discord.User = None):
+        await self._osu_recent_mode(interaction, user, "cbt")
 
-    async def _osu_recent_mode(self, ctx, user, mode_key):
-        await ctx.defer()
-        user = user or ctx.author
+    async def _osu_recent_mode(self, interaction, user, mode_key):
+        await interaction.response.defer()
+        user = user or interaction.user
         osu_data = self.load_osu_data()
         udata = osu_data.get(str(user.id))
         if not udata:
-            await ctx.respond(f"{user.mention} 尚未綁定 osu! 帳號。請先用 `/osu_bind <osu用戶名>` 綁定。")
+            await interaction.followup.send(f"{user.mention} 尚未綁定 osu! 帳號。請先用 `/osu_bind <osu用戶名>` 綁定。")
             return
         token = await self.get_osu_token()
         mode = OSU_MODE_MAP[mode_key]
         data = await self.get_osu_recent(udata["osu_id"], token, mode=mode, limit=1)
         if not data:
-            await ctx.respond(f"{user.mention} 在 {OSU_MODE_NAMES[mode_key]} 沒有最近遊玩紀錄。")
+            await interaction.followup.send(f"{user.mention} 在 {OSU_MODE_NAMES[mode_key]} 沒有最近遊玩紀錄。")
             return
         play = data[0]
         beatmap = play.get("beatmap", {})
@@ -157,32 +155,36 @@ class OsuCog(commands.Cog):
         embed.add_field(name="Combo", value=play.get("max_combo", "N/A"), inline=True)
         embed.add_field(name="Mods", value=" ".join(play.get("mods", [])) or "None", inline=True)
         embed.set_footer(text=OSU_MODE_NAMES[mode_key])
-        await ctx.respond(embed=embed)
+        await interaction.followup.send(embed=embed)
 
     # /osu_top 主指令 + mode 參數
-    @discord.slash_command(description="查詢 osu! 最佳紀錄（可選模式）")
+    @app_commands.command(name="osu_top", description="查詢 osu! 最佳紀錄（可選模式）")
+    @app_commands.describe(mode="osu! 模式", user="指定查詢的 Discord 帳號")
+    @app_commands.choices(mode=[
+        app_commands.Choice(name="standard", value="std"),
+        app_commands.Choice(name="taiko", value="taiko"),
+        app_commands.Choice(name="mania", value="mania"),
+        app_commands.Choice(name="catch", value="cbt"),
+    ])
     async def osu_top(
         self,
-        ctx,
-        mode: str = discord.Option(
-            "std",
-            description="osu! 模式",
-            choices=["std", "taiko", "mania", "cbt"]
-        ),
+        interaction: discord.Interaction,
+        mode: app_commands.Choice[str] = None,
         user: discord.User = None
     ):
-        await ctx.defer()
-        user = user or ctx.author
+        await interaction.response.defer()
+        user = user or interaction.user
         osu_data = self.load_osu_data()
         udata = osu_data.get(str(user.id))
         if not udata:
-            await ctx.respond(f"{user.mention} 尚未綁定 osu! 帳號。請先用 `/osu_bind <osu用戶名>` 綁定。")
+            await interaction.followup.send(f"{user.mention} 尚未綁定 osu! 帳號。請先用 `/osu_bind <osu用戶名>` 綁定。")
             return
         token = await self.get_osu_token()
-        mode_val = OSU_MODE_MAP[mode]
+        mode_key = mode.value if mode else "std"
+        mode_val = OSU_MODE_MAP[mode_key]
         data = await self.get_osu_top(udata["osu_id"], token, mode=mode_val, limit=1)
         if not data:
-            await ctx.respond(f"{user.mention} 在 {OSU_MODE_NAMES[mode]} 沒有 Top 紀錄。")
+            await interaction.followup.send(f"{user.mention} 在 {OSU_MODE_NAMES[mode_key]} 沒有 Top 紀錄。")
             return
         play = data[0]
         beatmap = play.get("beatmap", {})
@@ -196,8 +198,11 @@ class OsuCog(commands.Cog):
         embed.add_field(name="準確率", value=f"{play.get('accuracy', 0)*100:.2f}%", inline=True)
         embed.add_field(name="Combo", value=play.get("max_combo", "N/A"), inline=True)
         embed.add_field(name="Mods", value=" ".join(play.get("mods", [])) or "None", inline=True)
-        embed.set_footer(text=OSU_MODE_NAMES[mode])
-        await ctx.respond(embed=embed)
+        embed.set_footer(text=OSU_MODE_NAMES[mode_key])
+        await interaction.followup.send(embed=embed)
 
-def setup(bot):
-    bot.add_cog(OsuCog(bot))
+    async def cog_load(self):
+        self.bot.tree.add_command(self.osu_recent)
+
+async def setup(bot):
+    await bot.add_cog(OsuCog(bot))
