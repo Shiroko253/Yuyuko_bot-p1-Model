@@ -164,11 +164,10 @@ class OsuCog(commands.Cog):
     async def osu_top(
         self,
         ctx,
-        mode: discord.Option(
-            str,
-            "osu! 模式",
-            choices=["std", "taiko", "mania", "cbt"],
-            default="std"
+        mode: str = discord.Option(
+            "std",
+            description="osu! 模式",
+            choices=["std", "taiko", "mania", "cbt"]
         ),
         user: discord.User = None
     ):
