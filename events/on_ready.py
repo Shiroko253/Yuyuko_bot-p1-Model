@@ -3,6 +3,7 @@ from discord.ext import commands
 import logging
 import time
 import os
+import aiohttp
 from datetime import datetime, timezone
 
 WEBHOOK_URL = os.getenv("WEBHOOK_URL")
@@ -14,9 +15,10 @@ async def send_webhook(bot: discord.Bot, message: str, color: discord.Color):
         return
     try:
         from discord import Webhook, Embed
-        webhook = Webhook.from_url(WEBHOOK_URL, session=bot.session)
-        embed = Embed(description=message, color=color, timestamp=datetime.now(timezone.utc))
-        await webhook.send(embed=embed)
+        async with aiohttp.ClientSession() as session:
+            webhook = Webhook.from_url(WEBHOOK_URL, session=session)
+            embed = Embed(description=message, color=color, timestamp=datetime.now(timezone.utc))
+            await webhook.send(embed=embed)
     except Exception as e:
         logging.exception(f"Webhook send failed: {e}")
 
