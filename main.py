@@ -8,6 +8,7 @@ from time import time
 from dotenv import load_dotenv
 import discord
 from discord.ext import commands
+from license_check import check_license
 
 # ----------- 靈魂日誌的啟動 -----------
 os.makedirs("logs", exist_ok=True)
@@ -20,6 +21,8 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger("SakuraBot")
+
+check_license(auto_fix=True)
 
 # ----------- 喚醒幽幽子的密鑰 -----------
 load_dotenv()
@@ -175,3 +178,4 @@ for folder in ['commands', 'events']:
 
 # ----------- 喚醒幽幽子，步入 Discord 世界 -----------
 bot.run(BOT_TOKEN)
+
