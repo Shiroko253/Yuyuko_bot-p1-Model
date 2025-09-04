@@ -271,6 +271,8 @@ class OnMessage(commands.Cog):
             await asyncio.sleep(3)
             await channel.send("你別無選擇")
             self.bot.black_hole_users.discard(message.author.id)
+        elif '再見 納維萊特' in content:
+            await channel.send("https://tenor.com/view/furina-focalors-genshin-genshin-impact-dance-gif-13263528549516779829")
 
 def setup(bot):
     bot.add_cog(OnMessage(bot))
