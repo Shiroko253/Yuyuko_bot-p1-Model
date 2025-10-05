@@ -29,7 +29,7 @@ check_license(auto_fix=True)
 
 # ----------- 喚醒幽幽子的密鑰 -----------
 load_dotenv()
-BOT_TOKEN = os.getenv("TEST_BOT_TOKEN")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     logger.error("未找到靈魂密鍵 BOT_TOKEN，幽幽子無法甦醒")
     sys.exit(1)  # [修復1級問題] 使用 sys.exit 而不是 raise
@@ -313,3 +313,4 @@ except Exception as e:
     logger.error(f"機器人運行時發生錯誤：{e}")
     cleanup_resources()
     sys.exit(1)
+
