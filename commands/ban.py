@@ -19,6 +19,7 @@ class Ban(commands.Cog):
 
     def __init__(self, bot):
         self.bot = bot
+        self.logger = logging.getLogger("SakuraBot.commands.ban")
 
     async def check_target_valid(self, ctx, target):
         if target is None:
@@ -88,7 +89,7 @@ class Ban(commands.Cog):
         except discord.Forbidden:
             return False
         except Exception as e:
-            logging.error(f"DM 發送失敗: {e}")
+            self.logger.error(f"DM 發送失敗: {e}")
             return False
 
     @discord.slash_command(name="ban", description="幽幽子冥界放逐：溫柔送走靈魂～")
@@ -96,56 +97,72 @@ class Ban(commands.Cog):
         self,
         ctx: discord.ApplicationContext,
         member: discord.Member,
-        reason: str = None
+        reason: str = "未提供原因"
     ):
-        await ctx.defer(ephemeral=False)
-
-        target = member if isinstance(member, discord.Member) else ctx.guild.get_member(member.id) if ctx.guild else None
-
-        # 檢查對象合法性
-        invalid_embed = await self.check_target_valid(ctx, target)
-        if invalid_embed:
-            await ctx.followup.send(embed=invalid_embed, ephemeral=True)
-            return
-
-        # 權限檢查
-        permission_embed = await self.check_permissions(ctx, target)
-        if permission_embed:
-            await ctx.followup.send(embed=permission_embed, ephemeral=True)
-            return
-
-        # reason 格式統一
-        reason_text = f"[幽幽子放逐] {reason or '未提供原因'}"
-
-        # DM 通知
-        dm_sent = await self.send_dm_notification(target, ctx.guild.name, reason_text)
-
-        # 放逐行為
         try:
-            await target.ban(reason=reason_text)
-            embed = make_embed(
-                "🌸 冥界放逐成功",
-                (
-                    f"✅ 靈魂 **{target}** 已被幽幽子溫柔地送離冥界～\n"
-                    f"原因：{reason_text}\n"
-                    f"{'（幽幽子未能成功私訊通知該靈魂）' if not dm_sent else '（幽幽子已將放逐訊息送達）'}\n\n"
-                    "願櫻花指引他的靈魂前往新的世界。"
-                ),
-                discord.Color.purple(),
-                "幽幽子的冥界，靈魂的故事永遠繼續～"
-            )
-            await ctx.followup.send(embed=embed, ephemeral=False)
+            await ctx.defer(ephemeral=False)
+
+            target = member
+
+            # 檢查對象合法性
+            invalid_embed = await self.check_target_valid(ctx, target)
+            if invalid_embed:
+                await ctx.followup.send(embed=invalid_embed, ephemeral=True)
+                return
+
+            # 權限檢查
+            permission_embed = await self.check_permissions(ctx, target)
+            if permission_embed:
+                await ctx.followup.send(embed=permission_embed, ephemeral=True)
+                return
+
+            # reason 格式統一
+            reason_text = f"[幽幽子放逐] {reason}"
+
+            # DM 通知
+            dm_sent = await self.send_dm_notification(target, ctx.guild.name, reason_text)
+
+            # 放逐行為
+            try:
+                await target.ban(reason=reason_text)
+                embed = make_embed(
+                    "🌸 冥界放逐成功",
+                    (
+                        f"✅ 靈魂 **{target}** 已被幽幽子溫柔地送離冥界～\n"
+                        f"原因：{reason_text}\n"
+                        f"{'（幽幽子未能成功私訊通知該靈魂）' if not dm_sent else '（幽幽子已將放逐訊息送達）'}\n\n"
+                        "願櫻花指引他的靈魂前往新的世界。"
+                    ),
+                    discord.Color.purple(),
+                    "幽幽子的冥界，靈魂的故事永遠繼續～"
+                )
+                await ctx.followup.send(embed=embed, ephemeral=False)
+            except Exception as e:
+                self.logger.error(f"Ban operation failed: {e}")
+                embed = make_embed(
+                    "🌸 冥界放逐失敗",
+                    f"❌ 放逐時冥界出現靈魂波動錯誤：{e}\n幽幽子會再試著幫你處理的～",
+                    discord.Color.red(),
+                    "有時候，靈魂的命運也是謎"
+                )
+                await ctx.followup.send(embed=embed, ephemeral=True)
+
         except Exception as e:
-            embed = make_embed(
-                "🌸 冥界放逐失敗",
-                f"❌ 放逐時冥界出現靈魂波動錯誤：{e}\n幽幽子會再試著幫你處理的～",
-                discord.Color.red(),
-                "有時候，靈魂的命運也是謎"
-            )
-            await ctx.followup.send(embed=embed, ephemeral=True)
+            self.logger.error(f"Ban command failed: {e}")
+            try:
+                error_embed = make_embed(
+                    "🌸 系統錯誤",
+                    "幽幽子的放逐系統出了點問題，請稍後再試～",
+                    discord.Color.red(),
+                    "如有問題請找管理員"
+                )
+                await ctx.followup.send(embed=error_embed, ephemeral=True)
+            except:
+                pass
 
 def setup(bot):
     """
     ✿ 幽幽子優雅地將冥界放逐功能裝進 bot 裡 ✿
     """
     bot.add_cog(Ban(bot))
+    logging.getLogger("SakuraBot.commands.ban").info("Ban Cog loaded successfully")
