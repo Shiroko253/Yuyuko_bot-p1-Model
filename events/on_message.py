@@ -1,100 +1,159 @@
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 import logging
 import random
 import asyncio
 import time
 from datetime import datetime, timezone, timedelta
 import os
+import sqlite3
 import openai
-from config.responses import (
-    food_responses, death_responses, life_death_responses, self_responses,
-    friend_responses, maid_responses, mistress_responses, reimu_responses
-)
 
-# 設定模組專屬日誌
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("SakuraBot.events.on_message")
 
-# 修復：移除末尾空格
 API_URL = 'https://api.chatanywhere.org/v1/'
-
-# 從環境變數取得 AUTHOR_ID（與 main.py 一致）
 AUTHOR_ID = int(os.getenv("AUTHOR_ID", 0))
+
 
 class OnMessage(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        # 初始化 black_hole_users（若尚未存在）
-        if not hasattr(bot, 'black_hole_users'):
-            bot.black_hole_users = set()
-
-        # 載入 API 金鑰
         self.api_keys = [
             {"key": os.getenv('CHATANYWHERE_API'), "limit": 200, "remaining": 200},
             {"key": os.getenv('CHATANYWHERE_API2'), "limit": 200, "remaining": 200}
         ]
         self.current_api_index = 0
-
-        # 檢查 API 金鑰
+        
+        # 載入彩蛋配置
+        self.easter_eggs = self._load_easter_eggs()
+        
+        # 檢查 API KEY
         for idx, api in enumerate(self.api_keys):
             if not api["key"]:
                 logger.error(f"API {idx} 沒有設置金鑰，請設置 CHATANYWHERE_API 或 CHATANYWHERE_API2 環境變數")
 
-        # 啟動定時清理任務
-        self.cleanup_task.start()
+    def _load_easter_eggs(self):
+        """載入彩蛋配置"""
+        return self.bot.data_manager._load_json(
+            "config/on_message.json",
+            self._get_default_config()
+        )
+    
+    def _get_default_config(self):
+        """預設彩蛋配置"""
+        return {
+            "simple_responses": {
+                "關於機器人幽幽子": "幽幽子的創建時間是<t:1623245700:D>",
+                "關於製作者": "製作者是個很好的人 雖然看上有有點怪怪的",
+                "幽幽子的生日": "機器人幽幽子的生日在<t:1623245700:D>",
+                "吃蛋糕嗎": "蛋糕？！ 在哪在哪？",
+                "關於停雲": "停雲小姐呀"
+            },
+            "random_responses": {
+                "關於食物": ["responses from config.responses.food_responses"],
+                "對於死亡": ["responses from config.responses.death_responses"],
+                "對於生死": ["responses from config.responses.life_death_responses"],
+                "關於幽幽子": ["responses from config.responses.self_responses"],
+                "幽幽子的朋友": ["responses from config.responses.friend_responses"],
+                "關於紅魔館的女僕": ["responses from config.responses.maid_responses"],
+                "關於紅魔舘的大小姐和二小姐": ["responses from config.responses.mistress_responses"],
+                "關於神社的巫女": ["responses from config.responses.reimu_responses"]
+            },
+            "complex_responses": {
+                "吃三色糰子嗎": [
+                    {"text": "三色糰子啊，以前妖夢...", "delay": 3},
+                    {"text": "...", "delay": 3},
+                    {"text": "算了 妖夢不在 我就算不吃東西 反正我是餓不死的存在", "delay": 3},
+                    {"text": "... 妖夢...你在哪...我好想你...", "delay": 3},
+                    {"text": "To be continued...\n-# 妖夢機器人即將到來", "delay": 0}
+                ],
+                "閉嘴蜘蛛俠": [
+                    {"text": "deadpool:This is Deadpool 2, not Titanic! Stop serenading me, Celine!", "delay": 3},
+                    {"text": "deadpool:You're singing way too good, can you sing it like crap for me?!", "delay": 3},
+                    {"text": "Celine Dion:Shut up, Spider-Man!", "delay": 3},
+                    {"text": "deadpool:sh*t, I really should have gone with NSYNC!", "delay": 0}
+                ],
+                "星爆氣流斬": [
+                    {"text": "アスナ！クライン！", "delay": 0},
+                    {"text": "**頼む、十秒だけ持ち堪えてくれ！**", "delay": 2},
+                    {"text": "スイッチ！", "delay": 10},
+                    {"text": "# スターバースト　ストリーム！", "delay": 5},
+                    {"text": "**速く…もっと速く！！**", "delay": 15},
+                    {"text": "終わった…のか？", "delay": 0}
+                ],
+                "再見 納維萊特": [
+                    {"text": "https://tenor.com/view/furina-focalors-genshin-genshin-impact-dance-gif-13263528549516779829", "delay": 0}
+                ]
+            },
+            "jojo_time_stop": {
+                "trigger": "これが最後の一撃だ！名に恥じぬ、ザ・ワールド、時よ止まれ！",
+                "responses": [
+                    {"text": "ザ・ワールド\nhttps://tenor.com/view/the-world-gif-18508433", "delay": 1},
+                    {"text": "一秒経過だ！", "delay": 3},
+                    {"text": "二秒経過だ、三秒経過だ！", "delay": 4},
+                    {"text": "四秒経過だ！", "delay": 5},
+                    {"text": "五秒経過だ！", "delay": 6},
+                    {"text": "六秒経過だ！", "delay": 7},
+                    {"text": "七秒経過した！", "delay": 8},
+                    {"text": "ジョジョよ、**私のローラー**!\nhttps://tenor.com/view/dio-roada-rolla-da-dio-brando-dio-dio-jojo-dio-part3-gif-16062047", "delay": 9},
+                    {"text": "遅い！逃げられないぞ！\nhttps://tenor.com/view/dio-jojo-gif-13742432", "delay": 0}
+                ]
+            },
+            "pucci_heaven": {
+                "trigger": "普奇神父",
+                "delete_trigger": True,
+                "responses": [
+                    {"text": "引力を信じるか？", "delay": 3},
+                    {"text": "私は最初にキノコを食べた者を尊敬する。毒キノコかもしれないのに。", "delay": 5},
+                    {"text": "DIO…", "delay": 2},
+                    {"text": "私がこの力を完全に使いこなせるようになったら、必ず君を目覚めさせるよ。", "delay": 5},
+                    {"text": "人は…いずれ天国へ至るものだ。", "delay": 3},
+                    {"text": "最後に言うよ…時間が加速し始める。降りてこい、DIO。", "delay": 1},
+                    {"text": "螺旋階段、甲虫、廃墟の街、果物のタルト、ドロテアの道、、特異点、ジョット、天使、紫陽花、秘密の皇帝…", "delay": 2},
+                    {"text": "ここまでだ。", "delay": 0},
+                    {"text": "天国へのカウントダウンが始まる…", "delay": 2},
+                    {"text": "# メイド・イン・ヘブン！！", "delay": 0}
+                ]
+            }
+        }
 
-    def cog_unload(self):
-        """Cog 卸載時取消定時任務"""
-        self.cleanup_task.cancel()
-
-    @tasks.loop(minutes=10)
-    async def cleanup_task(self):
-        """每 10 分鐘清理一次舊訊息"""
-        self._clean_old_messages()
-
-    @cleanup_task.before_loop
-    async def before_cleanup(self):
-        await self.bot.wait_until_ready()
-
-    # ======================
-    # 資料庫操作（使用 bot.data_manager）
-    # ======================
-
-    def _record_message(self, user_id: str, message: str):
-        """記錄用戶訊息到 SQLite"""
+    @staticmethod
+    def record_message(user_id, message, db_path):
+        """記錄用戶訊息到資料庫"""
         if not user_id or not message or not isinstance(message, str):
             return
         try:
             now_utc = datetime.now(timezone.utc).isoformat()
-            with self.bot.data_manager._get_db_connection() as conn:
+            with sqlite3.connect(db_path) as conn:
                 c = conn.cursor()
                 c.execute("""
-                    SELECT id, repeat_count, is_permanent FROM UserMessages 
+                    SELECT id, repeat_count FROM UserMessages 
                     WHERE user_id = ? AND message = ? AND is_permanent = FALSE
                 """, (user_id, message))
                 row = c.fetchone()
+                
                 if row:
                     new_count = row[1] + 1
-                    if new_count >= 10:
-                        c.execute("""
-                            UPDATE UserMessages SET repeat_count = ?, is_permanent = TRUE 
-                            WHERE id = ?
-                        """, (new_count, row[0]))
-                    else:
-                        c.execute("UPDATE UserMessages SET repeat_count = ? WHERE id = ?", (new_count, row[0]))
+                    is_permanent = new_count >= 10
+                    c.execute("""
+                        UPDATE UserMessages 
+                        SET repeat_count = ?, is_permanent = ? 
+                        WHERE id = ?
+                    """, (new_count, is_permanent, row[0]))
                 else:
                     c.execute("""
                         INSERT INTO UserMessages (user_id, message, created_at) 
                         VALUES (?, ?, ?)
                     """, (user_id, message, now_utc))
                 conn.commit()
-        except Exception as e:
+        except sqlite3.Error as e:
             logger.error(f"記錄訊息失敗: {e}")
 
-    def _clean_old_messages(self, minutes=30):
-        """清理非永久的舊訊息"""
+    @staticmethod
+    def clean_old_messages(db_path, minutes=30):
+        """清理舊訊息"""
         try:
-            with self.bot.data_manager._get_db_connection() as conn:
+            with sqlite3.connect(db_path) as conn:
                 c = conn.cursor()
                 time_ago = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
                 c.execute("""
@@ -103,60 +162,37 @@ class OnMessage(commands.Cog):
                 """, (time_ago,))
                 deleted_rows = c.rowcount
                 conn.commit()
-                logger.info(f"已刪除 {deleted_rows} 條舊訊息")
-        except Exception as e:
+                if deleted_rows > 0:
+                    logger.info(f"已刪除 {deleted_rows} 條舊訊息")
+                return deleted_rows
+        except sqlite3.Error as e:
             logger.error(f"清理舊訊息失敗: {e}")
+            return 0
 
-    def _get_user_background_info(self, user_id: str) -> str:
-        """從 DB 取得背景資訊"""
+    @staticmethod
+    def get_user_background_info(user_id, db_path):
+        """獲取用戶背景資訊"""
         try:
-            with self.bot.data_manager._get_db_connection() as conn:
+            with sqlite3.connect(db_path) as conn:
                 c = conn.cursor()
                 c.execute("SELECT info FROM BackgroundInfo WHERE user_id = ?", (user_id,))
-                row = c.fetchone()
-                return row[0] if row else None
-        except Exception as e:
-            logger.error(f"取得背景資訊失敗: {e}")
+                rows = c.fetchall()
+                return "\n".join([row[0] for row in rows]) if rows else None
+        except sqlite3.Error as e:
+            logger.error(f"獲取背景資訊失敗: {e}")
             return None
 
-    def _ensure_background_info(self):
-        """確保幽幽子的背景資訊存在"""
-        user_id = "西行寺 幽幽子"
-        info = self._get_user_background_info(user_id)
-        if not info:
-            default_info = (
-                "我是西行寺幽幽子，白玉樓的主人，幽靈公主。"
-                "生前因擁有『操縱死亡的能力』，最終選擇自盡，被埋葬於西行妖之下，化為幽靈。"
-                "現在，我悠閒地管理著冥界，欣賞四季變換，品味美食，偶爾捉弄妖夢。"
-                "雖然我的話語總是輕飄飄的，但生與死的流轉，皆在我的掌握之中。"
-                "啊，還有，請不要吝嗇帶點好吃的來呢～"
-            )
-            try:
-                with self.bot.data_manager._get_db_connection() as conn:
-                    c = conn.cursor()
-                    c.execute("INSERT INTO BackgroundInfo (user_id, info) VALUES (?, ?)", (user_id, default_info))
-                    conn.commit()
-            except Exception as e:
-                logger.error(f"初始化背景資訊失敗: {e}")
-        return self._get_user_background_info(user_id)
-
-    def _summarize_context(self, context: str) -> str:
-        """簡化上下文（保留前 1500 字）"""
-        return context[:1500]
-
-    # ======================
-    # AI 回應生成（同步版本，供 async 呼叫）
-    # ======================
-
-    def _generate_response_sync(self, prompt: str, user_id: str) -> str:
-        """同步生成 AI 回應（供 asyncio.to_thread 使用）"""
+    def generate_response(self, prompt, user_id):
+        """生成 AI 回應"""
         tried_all_apis = False
         original_index = self.current_api_index
+        db_path = self.bot.data_manager.db_path
 
         while True:
             try:
                 api_key = self.api_keys[self.current_api_index]["key"]
                 if not api_key:
+                    logger.error(f"API {self.current_api_index} 沒有設置金鑰")
                     return "伺服器金鑰未設定，請通知管理員設置環境變數 CHATANYWHERE_API 或 CHATANYWHERE_API2。"
 
                 if self.api_keys[self.current_api_index]["remaining"] <= 0:
@@ -170,297 +206,272 @@ class OnMessage(commands.Cog):
                 openai.api_base = API_URL
                 openai.api_key = api_key
 
-                # 取得上下文
-                with self.bot.data_manager._get_db_connection() as conn:
+                # 獲取對話歷史
+                with sqlite3.connect(db_path) as conn:
                     c = conn.cursor()
-                    c.execute("SELECT message FROM UserMessages WHERE user_id = ? OR user_id = 'system'", (user_id,))
-                    rows = c.fetchall()
-                context = "\n".join([f"{user_id}說 {row[0]}" for row in rows])
+                    c.execute("""
+                        SELECT message FROM UserMessages 
+                        WHERE user_id = ? OR user_id = 'system'
+                        ORDER BY created_at DESC LIMIT 20
+                    """, (user_id,))
+                    context = "\n".join([f"{user_id}說: {row[0]}" for row in c.fetchall()])
 
-                # 確保背景資訊存在
-                background_info = self._ensure_background_info()
+                # 獲取或創建背景資訊
+                user_background_info = self.get_user_background_info("西行寺 幽幽子", db_path)
+                if not user_background_info:
+                    updated_background_info = (
+                        "我是西行寺幽幽子，白玉樓的主人，幽靈公主。"
+                        "生前因擁有『操縱死亡的能力』，最終選擇自盡，被埋葬於西行妖之下，化為幽靈。"
+                        "現在，我悠閒地管理著冥界，欣賞四季變換，品味美食，偶爾捉弄妖夢。"
+                        "雖然我的話語總是輕飄飄的，但生與死的流轉，皆在我的掌握之中。"
+                        "啊，還有，請不要吝嗇帶點好吃的來呢～"
+                    )
+                    with sqlite3.connect(db_path) as conn:
+                        c = conn.cursor()
+                        c.execute("""
+                            INSERT OR REPLACE INTO BackgroundInfo (user_id, info) 
+                            VALUES (?, ?)
+                        """, ("西行寺 幽幽子", updated_background_info))
+                        conn.commit()
+                else:
+                    updated_background_info = user_background_info
 
-                if len(context.split()) > 3000:
-                    context = self._summarize_context(context)
-
+                # 構建訊息
                 messages = [
-                    {"role": "system", "content": f"你現在是西行寺幽幽子，冥界的幽靈公主，背景資訊：{background_info}"},
-                    {"role": "user", "content": f"{user_id}說 {prompt}"},
-                    {"role": "assistant", "content": f"已知背景資訊：\n{context}"}
+                    {"role": "system", "content": f"你現在是西行寺幽幽子，冥界的幽靈公主，背景資訊：{updated_background_info}"},
+                    {"role": "assistant", "content": f"已知對話歷史：\n{context}"},
+                    {"role": "user", "content": prompt}
                 ]
 
+                # 呼叫 API (修正模型名稱)
                 response = openai.ChatCompletion.create(
-                    model="gpt-5-mini",
-                    messages=messages
+                    model="gpt-5-mini",  # 修正: gpt-5-mini 不存在
+                    messages=messages,
+                    max_tokens=500,
+                    temperature=0.9
                 )
+                
                 self.api_keys[self.current_api_index]["remaining"] -= 1
                 return response['choices'][0]['message']['content'].strip()
-
+                
             except Exception as e:
                 logger.error(f"API {self.current_api_index} 發生錯誤: {str(e)}")
                 self.current_api_index = (self.current_api_index + 1) % len(self.api_keys)
                 if self.current_api_index == original_index:
                     return "幽幽子現在有點懶洋洋的呢～等會兒再來吧♪"
 
-    async def _generate_response(self, prompt: str, user_id: str) -> str:
-        """非同步生成 AI 回應"""
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self._generate_response_sync, prompt, user_id)
-
-    # ======================
-    # 工具方法
-    # ======================
-
-    def _get_random_response(self, response_list):
-        return random.choice(response_list.get("responses", ["幽幽子有點迷糊，沒找到合適的回應～"]))
-
-    # ======================
-    # 事件監聽
-    # ======================
+    async def handle_complex_response(self, channel, responses):
+        """處理複雜回應(多條訊息+延遲)"""
+        for response in responses:
+            await channel.send(response["text"])
+            if response.get("delay", 0) > 0:
+                await asyncio.sleep(response["delay"])
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        # 更新最後活動時間
+        """主要訊息處理器"""
         self.bot.last_activity_time = time.time()
-
-        # 忽略機器人自身與 Webhook
+        
+        # 忽略自己和 webhook
         if message.author == self.bot.user or message.webhook_id:
             return
 
-        # 黑名單攔截
-        if self.bot.data_manager.is_user_blocked(message.author.id):
-            return
-
-        content = message.content.lower()
+        content = message.content
+        content_lower = content.lower()
         channel = message.channel
+        db_path = self.bot.data_manager.db_path
 
-        # 檢查是否回覆機器人
+        # --- AI 對話處理 ---
         is_reply_to_bot = False
+        is_mentioning_bot = self.bot.user.mention in content
+        
         if message.reference and message.reference.message_id:
             try:
-                ref_msg = await channel.fetch_message(message.reference.message_id)
-                if ref_msg.author == self.bot.user:
-                    is_reply_to_bot = True
+                referenced_message = await channel.fetch_message(message.reference.message_id)
+                is_reply_to_bot = referenced_message.author == self.bot.user
             except discord.NotFound:
                 pass
-
-        # 檢查是否提及機器人
-        is_mentioning_bot = self.bot.user.mention in message.content
-
-        # AI 對話觸發
+                
         if is_reply_to_bot or is_mentioning_bot:
-            user_message = message.content
             user_id = str(message.author.id)
-            self._record_message(user_id, user_message)
-            response = await self._generate_response(user_message, user_id)
+            self.record_message(user_id, content, db_path)
+            self.clean_old_messages(db_path)
+            response = self.generate_response(content, user_id)
             await channel.send(response)
+            return  # AI 回應後不再處理其他觸發
 
-        # === 彩蛋與關鍵字回應 ===
+        # --- 簡單關鍵字回應 ---
+        for keyword, response in self.easter_eggs.get("simple_responses", {}).items():
+            if keyword in content_lower:
+                await channel.send(response)
+                return
 
-        if '關於機器人幽幽子' in content:
-            await channel.send('幽幽子的創建時間是<t:1623245700:D>')
-        elif '關於製作者' in content:
-            await channel.send('製作者是個很好的人 雖然看上有有點怪怪的')
-        elif '幽幽子的生日' in content:
-            await channel.send('機器人幽幽子的生日在<t:1623245700:D>')
-        elif '幽幽子待機多久了' in content:
-            current_time = time.time()
-            idle_seconds = current_time - getattr(self.bot, "last_activity_time", current_time)
-            if idle_seconds >= 86400:
-                await channel.send(f'幽幽子目前已待機了 **{idle_seconds / 86400:.2f} 天**')
-            elif idle_seconds >= 3600:
-                await channel.send(f'幽幽子目前已待機了 **{idle_seconds / 3600:.2f} 小時**')
+        # --- 複雜多步驟回應 ---
+        for keyword, responses in self.easter_eggs.get("complex_responses", {}).items():
+            if keyword in content:
+                await self.handle_complex_response(channel, responses)
+                return
+
+        # --- JOJO 時停 ---
+        jojo = self.easter_eggs.get("jojo_time_stop", {})
+        if jojo.get("trigger") in content:
+            await self.handle_complex_response(channel, jojo.get("responses", []))
+            return
+
+        # --- 普奇神父 (需刪除訊息) ---
+        pucci = self.easter_eggs.get("pucci_heaven", {})
+        if pucci.get("trigger") in content:
+            if pucci.get("delete_trigger"):
+                try:
+                    await message.delete()
+                except (discord.Forbidden, discord.NotFound):
+                    await channel.send("⚠️ 無法刪除訊息，請確認我有刪除訊息的權限。")
+            await self.handle_complex_response(channel, pucci.get("responses", []))
+            return
+
+        # --- 特殊功能 ---
+        if '幽幽子待機多久了' in content_lower:
+            await self.handle_idle_time(channel)
+            return
+
+        if '蘿莉？' in content:
+            await self.handle_lolicon(message)
+            return
+
+        if content in ["早安", "午安", "晚安"]:
+            await self.handle_greetings(message)
+            return
+
+        if content.startswith('關閉機器人'):
+            await self.handle_shutdown(message)
+            return
+
+        # --- 黑洞系統 ---
+        if '擬態黑洞' in content:
+            await self.handle_black_hole_activate(message)
+            return
+
+        if '釋放' in content:
+            await self.handle_black_hole_release(message)
+            return
+
+        # --- 私訊記錄 ---
+        if isinstance(channel, discord.DMChannel):
+            self.record_dm_message(message)
+
+    async def handle_idle_time(self, channel):
+        """處理待機時間查詢"""
+        current_time = time.time()
+        idle_seconds = current_time - getattr(self.bot, "last_activity_time", current_time)
+        
+        idle_days = idle_seconds / 86400
+        idle_hours = idle_seconds / 3600
+        idle_minutes = idle_seconds / 60
+        
+        if idle_days >= 1:
+            await channel.send(f'幽幽子目前已待機了 **{idle_days:.2f} 天**')
+        elif idle_hours >= 1:
+            await channel.send(f'幽幽子目前已待機了 **{idle_hours:.2f} 小時**')
+        else:
+            await channel.send(f'幽幽子目前已待機了 **{idle_minutes:.2f} 分鐘**')
+
+    async def handle_lolicon(self, message):
+        """處理蘿莉控彩蛋"""
+        await message.channel.send("蘿莉控？")
+        await asyncio.sleep(5)
+        
+        if message.guild:
+            members = [member for member in message.guild.members if not member.bot]
+            if members:
+                random_member = random.choice(members)
+                await message.channel.send(f"您是說 {random_member.mention} 這位用戶嗎")
             else:
-                await channel.send(f'幽幽子目前已待機了 **{idle_seconds / 60:.2f} 分鐘**')
+                await message.channel.send("這個伺服器內沒有普通成員。")
+        else:
+            await message.channel.send("這個能力只能在伺服器內使用。")
 
-        # 私訊記錄（使用 data_manager）
-        if isinstance(message.channel, discord.DMChannel):
-            user_id = str(message.author.id)
-            dm_data = self.bot.data_manager.dm_messages
-            if user_id not in dm_data:
-                dm_data[user_id] = []
-            dm_data[user_id].append({
-                'content': message.content,
-                'timestamp': message.created_at.isoformat()
-            })
-            # 保存
-            self.bot.data_manager._save_json(
-                os.path.join(self.bot.data_manager.config_dir, "dm_messages.json"),
-                dm_data
-            )
-            logger.info(f"DM from {message.author}: {message.content}")
+    async def handle_greetings(self, message):
+        """處理早午晚安"""
+        current_time = datetime.now().strftime("%H:%M")
+        is_author = message.author.id == AUTHOR_ID
+        
+        greetings = {
+            "早安": {
+                "author": "早安 主人 今日的開發目標順利嗎",
+                "normal": "早上好 今天有什麽事情儘早完成喲"
+            },
+            "午安": {
+                "author": "下午好呀 今天似乎沒有什麼事情可以做呢",
+                "normal": "中午好啊 看起來汝似乎無所事事的呢"
+            },
+            "晚安": {
+                "author": f"你趕快去睡覺 現在已經是 {current_time} 了 別再熬夜了！",
+                "normal": f"現在的時間是 {current_time} 汝還不就寢嗎？"
+            }
+        }
+        
+        greeting = greetings.get(message.content, {})
+        response = greeting.get("author" if is_author else "normal", "...")
+        await message.reply(response, mention_author=is_author)
 
-        # JOJO 彩蛋
-        if 'これが最後の一撃だ！名に恥じぬ、ザ・ワールド、時よ止まれ！' in content:
-            await channel.send('ザ・ワールド\nhttps://tenor.com/view/the-world-gif-18508433')
-            await asyncio.sleep(1)
-            await channel.send('一秒経過だ！')
-            await asyncio.sleep(3)
-            await channel.send('二秒経過だ、三秒経過だ！')
-            await asyncio.sleep(4)
-            await channel.send('四秒経過だ！')
-            await asyncio.sleep(5)
-            await channel.send('五秒経過だ！')
-            await asyncio.sleep(6)
-            await channel.send('六秒経過だ！')
-            await asyncio.sleep(7)
-            await channel.send('七秒経過した！')
-            await asyncio.sleep(8)
-            await channel.send('ジョジョよ、**私のローラー**!\nhttps://tenor.com/view/dio-roada-rolla-da-dio-brando-dio-dio-jojo-dio-part3-gif-16062047')
-            await asyncio.sleep(9)
-            await channel.send('遅い！逃げられないぞ！\nhttps://tenor.com/view/dio-jojo-gif-13742432')
+    async def handle_shutdown(self, message):
+        """處理關機指令"""
+        if message.author.id == AUTHOR_ID:
+            await message.channel.send("正在關閉...")
+            self.bot.data_manager.save_all()
+            await asyncio.sleep(2)
+            await self.bot.close()
+        else:
+            await message.channel.send("你無權關閉我 >_<")
 
-        # SAO 彩蛋
-        if '星爆氣流斬' in content:
-            await channel.send('アスナ！クライン！')
-            await channel.send('**頼む、十秒だけ持ち堪えてくれ！**')
-            await asyncio.sleep(2)
-            await channel.send('スイッチ！')
-            await asyncio.sleep(10)
-            await channel.send('# スターバースト　ストリーム！')
-            await asyncio.sleep(5)
-            await channel.send('**速く…もっと速く！！**')
-            await asyncio.sleep(15)
-            await channel.send('終わった…のか？')
+    async def handle_black_hole_activate(self, message):
+        """啟動黑洞"""
+        try:
+            await message.delete()
+        except (discord.Forbidden, discord.NotFound):
+            await message.channel.send("⚠️ 無法刪除訊息，請確認我有刪除訊息的權限。")
+            return
+        
+        self.bot.data_manager.black_hole_users.add(message.author.id)
+        await message.channel.send("見過星辰粉碎的樣子嗎")
 
-        # 其他彩蛋（略，保持原邏輯）
-        if '關於食物' in content:
-            await channel.send(self._get_random_response(food_responses))
-        elif '對於死亡' in content:
-            await channel.send(self._get_random_response(death_responses))
-        elif '對於生死' in content:
-            await channel.send(self._get_random_response(life_death_responses))
-        elif '關於幽幽子' in content:
-            await channel.send(self._get_random_response(self_responses))
-        elif '幽幽子的朋友' in content:
-            await channel.send(self._get_random_response(friend_responses))
-        elif '關於紅魔館的女僕' in content:
-            await channel.send(self._get_random_response(maid_responses))
-        elif '關於紅魔舘的大小姐和二小姐' in content:
-            await channel.send(self._get_random_response(mistress_responses))
-        elif '關於神社的巫女' in content:
-            await channel.send(self._get_random_response(reimu_responses))
-        elif '吃蛋糕嗎' in content:
-            await channel.send('蛋糕？！ 在哪在哪？')
-            await asyncio.sleep(3)
-            await channel.send('妖夢 蛋糕在哪裏？')
-            await asyncio.sleep(3)
-            await channel.send('原來是個夢呀')
-        elif '吃三色糰子嗎' in content:
-            await channel.send('三色糰子啊，以前妖夢...')
-            await asyncio.sleep(3)
-            await channel.send('...')
-            await asyncio.sleep(3)
-            await channel.send('算了 妖夢不在 我就算不吃東西 反正我是餓不死的存在')
-            await asyncio.sleep(3)
-            await channel.send('... 妖夢...你在哪...我好想你...')
-            await asyncio.sleep(3)
-            await channel.send('To be continued...\n-# 妖夢機器人即將到來')
-        elif '閉嘴蜘蛛俠' in content:
-            await channel.send('deadpool:This is Deadpool 2, not Titanic! Stop serenading me, Celine!')
-            await asyncio.sleep(3)
-            await channel.send('deadpool:You’re singing way too good, can you sing it like crap for me?!')
-            await asyncio.sleep(3)
-            await channel.send('Celine Dion:Shut up, Spider-Man!')
-            await asyncio.sleep(3)
-            await channel.send('deadpool:sh*t, I really should have gone with NSYNC!')
-        elif '普奇神父' in content:
-            try:
-                await message.delete()
-            except discord.Forbidden:
-                await channel.send("⚠️ 無法刪除訊息，請確認我有刪除訊息的權限。")
-                return
-            except discord.NotFound:
-                pass
-            await channel.send("引力を信じるか？")
-            await asyncio.sleep(3)
-            await channel.send("私は最初にキノコを食べた者を尊敬する。毒キノコかもしれないのに。")
-            await asyncio.sleep(5)
-            await channel.send("DIO…")
-            await asyncio.sleep(2)
-            await channel.send("私がこの力を完全に使いこなせるようになったら、必ず君を目覚めさせるよ。")
-            await asyncio.sleep(5)
-            await channel.send("人は…いずれ天国へ至るものだ。")
-            await asyncio.sleep(3)
-            await channel.send("最後に言うよ…時間が加速し始める。降りてこい、DIO。")
-            await asyncio.sleep(1)
-            await channel.send("螺旋階段、甲虫、廃墟の街、果物のタルト、ドロテアの道、、特異点、ジョット、天使、紫陽花、秘密の皇帝…")
-            await asyncio.sleep(2)
-            await channel.send("ここまでだ。")
-            await channel.send("天国へのカウントダウンが始まる…")
-            await asyncio.sleep(2)
-            await channel.send("# メイド・イン・ヘブン！！")
-        elif '關於停雲' in content:
-            await channel.send("停雲小姐呀")
-            await asyncio.sleep(3)
-            await channel.send("我記的是一位叫yan的開發者製作的一個discord bot 吧~")
-            await asyncio.sleep(3)
-            await channel.send("汝 是否是想説 “我爲何知道的呢” 呵呵")
-            await asyncio.sleep(3)
-            await channel.send("那是我的主人告訴我滴喲~ 欸嘿~")
-        elif '蘿莉？' in content:
-            await channel.send("蘿莉控？")
-            await asyncio.sleep(5)
-            if message.guild:
-                members = [member.id for member in message.guild.members if not member.bot]
-                if members:
-                    random_user_id = random.choice(members)
-                    await channel.send(f"您是說 <@{random_user_id}> 這位用戶嗎")
-                else:
-                    await channel.send("這個伺服器內沒有普通成員。")
-            else:
-                await channel.send("這個能力只能在伺服器內使用。")
-        elif message.content in ["早安", "午安", "晚安"]:
-            current_time = datetime.now().strftime("%H:%M")
-            if message.content == "早安":
-                if message.author.id == AUTHOR_ID:
-                    await message.reply("早安 主人 今日的開發目標順利嗎")
-                else:
-                    await message.reply("早上好 今天有什麽事情儘早完成喲", mention_author=False)
-            elif message.content == "午安":
-                if message.author.id == AUTHOR_ID:
-                    await message.reply("下午好呀 今天似乎沒有什麼事情可以做呢")
-                else:
-                    await message.reply("中午好啊 看起來汝似乎無所事事的呢", mention_author=False)
-            elif message.content == "晚安":
-                if message.author.id == AUTHOR_ID:
-                    await message.reply(f"你趕快去睡覺 現在已經是 {current_time} 了 別再熬夜了！")
-                else:
-                    await message.reply(f"現在的時間是 {current_time} 汝還不就寢嗎？", mention_author=False)
-        elif message.content.startswith('關閉機器人'):
-            if message.author.id == AUTHOR_ID:
-                await channel.send("正在關閉...")
-                await asyncio.sleep(5)
-                await self.bot.close()
-            else:
-                await channel.send("你無權關閉我 >_<")
-        elif '擬態黑洞' in content:
-            try:
-                await message.delete()
-            except discord.Forbidden:
-                await channel.send("⚠️ 無法刪除訊息，請確認我有刪除訊息的權限。")
-                return
-            except discord.NotFound:
-                pass
-            self.bot.black_hole_users.add(message.author.id)
-            await channel.send("見過星辰粉碎的樣子嗎")
-        elif '釋放' in content:
-            if message.author.id not in self.bot.black_hole_users:
-                await channel.send("終結技能量不足")
-                return
-            try:
-                await message.delete()
-            except discord.Forbidden:
-                await channel.send("⚠️ 無法刪除訊息，請確認我有刪除訊息的權限。")
-                return
-            except discord.NotFound:
-                pass
-            await channel.send("生存還是毀滅")
-            await asyncio.sleep(3)
-            await channel.send("你別無選擇")
-            self.bot.black_hole_users.discard(message.author.id)
-        elif '再見 納維萊特' in content:
-            await channel.send("https://tenor.com/view/furina-focalors-genshin-genshin-impact-dance-gif-13263528549516779829")
+    async def handle_black_hole_release(self, message):
+        """釋放黑洞"""
+        if message.author.id not in self.bot.data_manager.black_hole_users:
+            await message.channel.send("終結技能量不足")
+            return
+        
+        try:
+            await message.delete()
+        except (discord.Forbidden, discord.NotFound):
+            await message.channel.send("⚠️ 無法刪除訊息，請確認我有刪除訊息的權限。")
+            return
+        
+        await message.channel.send("生存還是毀滅")
+        await asyncio.sleep(3)
+        await message.channel.send("你別無選擇")
+        self.bot.data_manager.black_hole_users.discard(message.author.id)
+
+    def record_dm_message(self, message):
+        """記錄私訊"""
+        user_id = str(message.author.id)
+        dm_messages = self.bot.data_manager.dm_messages
+        
+        if user_id not in dm_messages:
+            dm_messages[user_id] = []
+        
+        dm_messages[user_id].append({
+            'content': message.content,
+            'timestamp': message.created_at.isoformat()
+        })
+        
+        self.bot.data_manager._save_json(
+            "config/dm_messages.json",
+            dm_messages
+        )
+        logger.info(f"私訊記錄: {message.author} - {message.content}")
+
 
 def setup(bot):
     bot.add_cog(OnMessage(bot))
+    logger.info("訊息處理模組已載入")
