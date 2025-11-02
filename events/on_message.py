@@ -245,7 +245,7 @@ class OnMessage(commands.Cog):
 
                 # 呼叫 API (修正模型名稱)
                 response = openai.ChatCompletion.create(
-                    model="gpt-5-mini",  # 修正: gpt-5-mini 不存在
+                    model="gpt-3.5-turbo",  # 修正: gpt-5-mini 不存在
                     messages=messages,
                     max_tokens=500,
                     temperature=0.9
@@ -392,7 +392,15 @@ class OnMessage(commands.Cog):
 
     async def handle_greetings(self, message):
         """處理早午晚安"""
-        current_time = datetime.now().strftime("%H:%M")
+        # 使用 UTC+8 時區 (馬來西亞 Kuching 時間)
+        from zoneinfo import ZoneInfo
+        try:
+            local_tz = ZoneInfo("Asia/Kuching")  # UTC+8
+        except:
+            # 如果 zoneinfo 不可用,使用 timedelta
+            local_tz = timezone(timedelta(hours=8))
+        
+        current_time = datetime.now(local_tz).strftime("%H:%M")
         is_author = message.author.id == AUTHOR_ID
         
         greetings = {
