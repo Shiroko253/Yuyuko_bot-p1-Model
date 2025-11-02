@@ -22,6 +22,26 @@ logging.basicConfig(
 )
 logger = logging.getLogger("SakuraBot")
 
+# ----------- 版權與許可證聲明 -----------
+logger.info("╔════════════════════════════════════════════════════════════════╗")
+logger.info("║                                                                ║")
+logger.info("║   🌸 西行寺幽幽子 Bot (Yuyuko Bot) - 冥界的櫻花守護者 🌸      ║")
+logger.info("║                                                                ║")
+logger.info("║   📝 Original Author: Miya253 (Shiroko253)                    ║")
+logger.info("║   📜 License: GPL-3.0                                          ║")
+logger.info("║   🔗 GitHub: https://github.com/Shiroko253/Yuyuko-bot         ║")
+logger.info("║                                                                ║")
+logger.info("╚════════════════════════════════════════════════════════════════╝")
+logger.info("")
+logger.info("  This program is free software licensed under GPL-3.0.")
+logger.info("  You are free to modify and redistribute it under the terms")
+logger.info("  of the license. Please retain author attribution.")
+logger.info("")
+logger.info("  本程式基於 GPL-3.0 開源許可證。")
+logger.info("  您可以自由修改和再分發，但請保留原作者資訊。")
+logger.info("")
+logger.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+
 check_license(auto_fix=True)
 
 # ----------- 喚醒幽幽子的密鑰 -----------
