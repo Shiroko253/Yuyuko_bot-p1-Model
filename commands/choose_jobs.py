@@ -3,6 +3,8 @@ from discord.ext import commands
 import logging
 from typing import Dict, Any
 
+logger = logging.getLogger("SakuraBot.commands.choose_jobs")
+
 class ChooseJob(commands.Cog):
     """
     ✿ 冥界職業祭典 ✿
@@ -10,17 +12,26 @@ class ChooseJob(commands.Cog):
     """
     def __init__(self, bot: discord.Bot):
         self.bot = bot
-        self.logger = logging.getLogger(__name__)
 
     @discord.slash_command(name="choose_job", description="幽幽子邀你選擇靈魂的工作～")
     async def choose_job(self, ctx: discord.ApplicationContext):
         guild_id = str(ctx.guild.id)
         user_id = str(ctx.user.id)
 
-        # 載入資料
-        user_data: Dict[str, Any] = self.bot.data_manager.load_yaml("config/config_user.yml", {})
-        config_data: Dict[str, Any] = self.bot.data_manager.load_json("config/config.json", {})
-        jobs_data: Dict[str, Any] = config_data.get("jobs", [{}])[0] if config_data.get("jobs") else {}
+        data_manager = self.bot.data_manager
+
+        # ✅ 修正：正確變數名稱
+        user_data: Dict[str, Any] = data_manager._load_yaml(f"{data_manager.config_dir}/config_user.yml", {})
+        config_data: Dict[str, Any] = data_manager._load_json(f"{data_manager.config_dir}/config.json", {})
+
+        # 相容 jobs 為 list 或 dict
+        jobs_list = config_data.get("jobs", [])
+        if isinstance(jobs_list, list) and len(jobs_list) > 0:
+            jobs_data = jobs_list[0]  # 取第一個物件
+        elif isinstance(jobs_list, dict):
+            jobs_data = jobs_list
+        else:
+            jobs_data = {}
 
         # 檢查用戶是否已有職業
         if guild_id in user_data and user_id in user_data[guild_id]:
@@ -35,7 +46,7 @@ class ChooseJob(commands.Cog):
                 return
 
         # 檢查職業資料
-        if not jobs_data or not isinstance(jobs_data, dict):
+        if not isinstance(jobs_data, dict) or not jobs_data:
             embed = discord.Embed(
                 title="🌸 冥界混沌～",
                 description="職業數據尚未正確配置，幽幽子也迷糊了！請快去找管理員賞櫻解惑～",
@@ -47,34 +58,37 @@ class ChooseJob(commands.Cog):
         class JobSelect(discord.ui.Select):
             def __init__(self, parent_view):
                 self.parent_view = parent_view
-                # 計算 IT程序員已選人數
+
+                # 計算 IT 程序員人數
                 it_count = sum(
-                    1 for u_id, u_info in user_data.get(guild_id, {}).items()
+                    1 for u_info in user_data.get(guild_id, {}).values()
                     if isinstance(u_info, dict) and u_info.get("job") == "IT程序員"
                 )
 
                 options = []
                 for job, data in jobs_data.items():
-                    if isinstance(data, dict) and "min" in data and "max" in data:
-                        # IT程序員最多2人
-                        if job == "IT程序員" and it_count >= 2:
-                            options.append(discord.SelectOption(
-                                label=f"   {job}   ",
-                                description=f"{data['min']}-{data['max']}幽靈幣（已滿員，櫻花凋零）",
-                                value=f"{job}_disabled",
-                                emoji="❌"
-                            ))
-                        else:
-                            options.append(discord.SelectOption(
-                                label=f"   {job}   ",
-                                description=f"{data['min']}-{data['max']}幽靈幣",
-                                value=job,
-                                emoji="🌸"
-                            ))
+                    if not isinstance(data, dict) or "min" not in data or "max" not in data:
+                        continue
 
+                    if job == "IT程序員" and it_count >= 2:
+                        options.append(discord.SelectOption(
+                            label=f"   {job}   ",
+                            description=f"{data['min']}-{data['max']}幽靈幣（已滿員）",
+                            value=f"{job}_disabled",
+                            emoji="❌"
+                        ))
+                    else:
+                        options.append(discord.SelectOption(
+                            label=f"   {job}   ",
+                            description=f"{data['min']}-{data['max']}幽靈幣",
+                            value=job,
+                            emoji="🌸"
+                        ))
+
+                # Discord 限制最多 25 個選項
                 super().__init__(
                     placeholder="請選擇你的靈魂工作～",
-                    options=options,
+                    options=options[:25],
                     min_values=1,
                     max_values=1
                 )
@@ -89,19 +103,18 @@ class ChooseJob(commands.Cog):
                     await interaction.response.send_message("此職業已滿員，櫻花已謝～請選其他工作吧！", ephemeral=True)
                     return
 
+                # 更新用戶資料
                 if guild_id not in user_data:
                     user_data[guild_id] = {}
-                if user_id not in user_data[guild_id]:
-                    user_data[guild_id][user_id] = {}
-
-                user_info = user_data[guild_id][user_id]
-                user_info["job"] = chosen_job
-                user_info.setdefault("work_cooldown", None)
+                user_data[guild_id][user_id] = {
+                    "job": chosen_job,
+                    "work_cooldown": None
+                }
 
                 try:
-                    self.parent_view.cog.bot.data_manager.save_yaml("config/config_user.yml", user_data)
+                    data_manager._save_yaml(f"{data_manager.config_dir}/config_user.yml", user_data)
                 except Exception as e:
-                    self.parent_view.cog.logger.exception(f"Failed to save user data for {user_id}: {e}")
+                    logger.exception(f"Failed to save user data for {user_id}: {e}")
                     embed = discord.Embed(
                         title="🌸 櫻花飄散，資料儲存失敗～",
                         description="儲存職業資料時遇到靈魂迷宮，請找管理員或幽幽子！",
@@ -110,13 +123,29 @@ class ChooseJob(commands.Cog):
                     await interaction.response.send_message(embed=embed, ephemeral=True)
                     return
 
+                # 生成專屬成功訊息
+                if chosen_job == "賭徒":
+                    embed = discord.Embed(
+                        title="🃏 靈魂簽約成功！賭徒之契約～",
+                        description=(
+                            "你已選擇 **賭徒**，從今以後與幽幽子共舞於生死邊緣！\n"
+                            "在 21 點遊戲中，你的賠率將提升至 **3 倍**！\n"
+                            "但記住：賭博有風險，櫻花亦無常～"
+                        ),
+                        color=discord.Color.dark_red()
+                    ).set_footer(text="命運之輪，由你轉動...")
+                else:
+                    embed = discord.Embed(
+                        title="🌸 靈魂簽約成功！～",
+                        description=f"你已選擇 **{chosen_job}**，從今以後成為冥界櫻花園的 {chosen_job}！\n幽幽子祝你靈魂工作愉快，每天都有好吃的～",
+                        color=discord.Color.green()
+                    ).set_footer(text="櫻花飄落，萬物皆美好～")
+
+                # 停用按鈕並停止 timeout
                 for child in self.parent_view.children:
                     child.disabled = True
-                embed = discord.Embed(
-                    title="🌸 靈魂簽約成功！～",
-                    description=f"你已選擇 **{chosen_job}**，從今以後成為冥界櫻花園的 {chosen_job}！\n幽幽子祝你靈魂工作愉快，每天都有好吃的～",
-                    color=discord.Color.green()
-                ).set_footer(text="櫻花飄落，萬物皆美好～")
+                self.parent_view.stop()  # ⭐ 立即停止計時器
+
                 await interaction.response.edit_message(embed=embed, view=self.parent_view)
 
         class JobView(discord.ui.View):
@@ -125,7 +154,7 @@ class ChooseJob(commands.Cog):
                 self.cog = cog
                 self.select = JobSelect(self)
                 self.add_item(self.select)
-                self.message = None  # for timeout
+                self.message = None
 
             async def on_timeout(self):
                 for child in self.children:
@@ -139,7 +168,7 @@ class ChooseJob(commands.Cog):
                     if self.message:
                         await self.message.edit(embed=embed, view=self)
                 except Exception as e:
-                    self.cog.logger.exception(f"Failed to handle timeout for {ctx.user.id}: {e}")
+                    logger.exception(f"Timeout message edit failed for {ctx.user.id}: {e}")
 
         try:
             view = JobView(self)
@@ -151,7 +180,7 @@ class ChooseJob(commands.Cog):
             message = await ctx.respond(embed=embed, view=view)
             view.message = message
         except Exception as e:
-            self.logger.exception(f"Failed to send job selection message for {user_id}: {e}")
+            logger.exception(f"Failed to send job selection message for {user_id}: {e}")
             embed = discord.Embed(
                 title="🌸 冥界混沌，無法開啟職業選擇～",
                 description="無法發送職業選擇訊息，幽幽子也迷糊了！請稍後再試～",
@@ -161,4 +190,4 @@ class ChooseJob(commands.Cog):
 
 def setup(bot: discord.Bot):
     bot.add_cog(ChooseJob(bot))
-    logging.info("ChooseJob Cog loaded successfully")
+    logger.info("ChooseJob Cog loaded successfully")
