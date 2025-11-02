@@ -73,20 +73,20 @@ class Balance(commands.Cog):
                 logger.error("data_manager 不存在")
                 return
 
-            # 從記憶體中讀取餘額 (不用重複讀檔)
+            # 從記憶體中讀取餘額 (只讀不需要鎖)
             user_balance = self.bot.data_manager.balance
             guild_id = str(ctx.guild.id)
             user_id = str(ctx.user.id)
 
-            # 初始化新用戶
-            if guild_id not in user_balance:
-                user_balance[guild_id] = {}
-            
-            if user_id not in user_balance[guild_id]:
-                user_balance[guild_id][user_id] = 0
-                # 保存新用戶數據
-                self.bot.data_manager.save_all()
-                logger.info(f"為新用戶 {ctx.user} 初始化餘額")
+            # 初始化新用戶 (需要鎖,因為要修改)
+            if guild_id not in user_balance or user_id not in user_balance.get(guild_id, {}):
+                async with self.bot.data_manager.balance_lock:
+                    if guild_id not in user_balance:
+                        user_balance[guild_id] = {}
+                    if user_id not in user_balance[guild_id]:
+                        user_balance[guild_id][user_id] = 0
+                        self.bot.data_manager.save_all()
+                        logger.info(f"為新用戶 {ctx.user} 初始化餘額")
 
             balance = user_balance[guild_id][user_id]
             formatted_balance = self.format_number(balance)
