@@ -32,8 +32,8 @@ class Clear(commands.Cog):
         )
     ) -> None:
         """清除指定數量的消息"""
-        await ctx.defer(ephemeral=True)
-
+        # 先不 defer，等確定結果後再決定是否公開
+        
         try:
             # Discord API 限制：只能刪除 14 天內的消息
             cutoff_date = datetime.now(tz=timezone.utc) - timedelta(days=14)
@@ -43,6 +43,7 @@ class Clear(commands.Cog):
             deleted_count = len(deleted)
 
             if deleted_count > 0:
+                # 成功刪除 - 公開顯示
                 embed = discord.Embed(
                     title="🌸 妖夢已完成清掃～",
                     description=(
@@ -52,11 +53,14 @@ class Clear(commands.Cog):
                     color=discord.Color.from_rgb(0, 255, 204)  # 青綠色
                 ).set_footer(text="冥界清掃完畢，櫻花更美了～")
                 
+                await ctx.respond(embed=embed, ephemeral=False)
+                
                 logger.info(
                     f"用戶 {ctx.user.id} 在頻道 {ctx.channel.id} "
                     f"清除了 {deleted_count} 條消息"
                 )
             else:
+                # 沒有刪除任何消息 - 私密顯示
                 embed = discord.Embed(
                     title="🌸 沒有靈魂可清掃～",
                     description=(
@@ -66,14 +70,15 @@ class Clear(commands.Cog):
                     color=discord.Color.from_rgb(255, 255, 153)  # 淺黃色
                 ).set_footer(text="冥界清掃受限於時空法則")
                 
+                await ctx.respond(embed=embed, ephemeral=True)
+                
                 logger.info(
                     f"用戶 {ctx.user.id} 在頻道 {ctx.channel.id} "
                     f"嘗試清除消息但沒有可刪除的消息"
                 )
 
-            await ctx.followup.send(embed=embed)
-
         except discord.Forbidden:
+            # 權限錯誤 - 私密顯示
             embed = discord.Embed(
                 title="⛔ 妖夢被困住了！",
                 description=(
@@ -83,13 +88,14 @@ class Clear(commands.Cog):
                 color=discord.Color.from_rgb(255, 102, 153)  # 粉紅色
             ).set_footer(text="請給機器人『管理消息』權限")
             
-            await ctx.followup.send(embed=embed)
+            await ctx.respond(embed=embed, ephemeral=True)
             logger.warning(
                 f"用戶 {ctx.user.id} 嘗試清除消息但 bot 權限不足 "
                 f"(頻道 {ctx.channel.id})"
             )
 
         except discord.HTTPException as e:
+            # HTTP 錯誤 - 私密顯示
             embed = discord.Embed(
                 title="❌ 櫻花舞亂了！",
                 description=(
@@ -99,13 +105,14 @@ class Clear(commands.Cog):
                 color=discord.Color.from_rgb(255, 51, 102)  # 深粉色
             ).set_footer(text="櫻花飄落有時，請稍後再試")
             
-            await ctx.followup.send(embed=embed)
+            await ctx.respond(embed=embed, ephemeral=True)
             logger.error(
                 f"清除消息時發生 HTTPException: {e} "
                 f"(用戶 {ctx.user.id}, 頻道 {ctx.channel.id})"
             )
 
         except Exception as e:
+            # 未知錯誤 - 私密顯示
             embed = discord.Embed(
                 title="❌ 冥界迷霧！",
                 description=(
@@ -115,7 +122,7 @@ class Clear(commands.Cog):
                 color=discord.Color.from_rgb(153, 0, 51)  # 暗紅色
             ).set_footer(text="如有問題請聯絡幽幽子或管理員")
             
-            await ctx.followup.send(embed=embed)
+            await ctx.respond(embed=embed, ephemeral=True)
             logger.exception(
                 f"清除消息時發生未知錯誤 (用戶 {ctx.user.id}, 頻道 {ctx.channel.id}): {e}"
             )
