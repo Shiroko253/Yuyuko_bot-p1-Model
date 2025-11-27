@@ -54,13 +54,14 @@ def calculate_fish_price(fish: dict) -> int:
 class ConfirmSellView(discord.ui.View):
     """確認販售的櫻花介面，幽幽子溫柔地等待你的決定"""
     
-    def __init__(self, fish_index: int, original_user_id: int, fish_shop_cog):
+    def __init__(self, fish_index: int, original_user_id: int, fish_shop_cog, page: int = 0):
         super().__init__(timeout=180)
         self.fish_index = fish_index
         self.original_user_id = original_user_id
         self.cog = fish_shop_cog
+        self.page = page  # 記住當前頁碼
 
-    @discord.ui.button(label="🌸 確認售出櫻花漁獲", style=discord.ButtonStyle.green)
+    @discord.ui.button(label="🌸 確認售出櫻花漁獲", style=discord.ButtonStyle.green, custom_id="confirm_sell")
     async def confirm_sell(self, button: discord.ui.Button, interaction: Interaction):
         """確認售出漁獲"""
         if interaction.user.id != self.original_user_id:
@@ -102,7 +103,13 @@ class ConfirmSellView(discord.ui.View):
                 return
             
             # 還有剩餘漁獲，顯示新的販售介面
-            sell_view = FishSellView(self.original_user_id, self.cog, page=0)
+            # 檢查當前頁碼是否仍然有效
+            items_per_page = 25
+            total_pages = (remaining_fishes + items_per_page - 1) // items_per_page
+            current_page = min(self.page, total_pages - 1)  # 確保頁碼不超出範圍
+            
+            sell_view = FishSellView(self.original_user_id, self.cog, page=current_page)
+            await sell_view.setup_components(interaction.user.id, interaction.guild.id)
             embed = await sell_view.get_updated_embed(interaction.user.id, interaction.guild.id)
             
             await interaction.response.edit_message(
@@ -119,7 +126,7 @@ class ConfirmSellView(discord.ui.View):
                 view=None
             )
 
-    @discord.ui.button(label="❀ 取消，暫不賣出", style=discord.ButtonStyle.red)
+    @discord.ui.button(label="❀ 取消，暫不賣出", style=discord.ButtonStyle.red, custom_id="cancel_sell")
     async def cancel_sell(self, button: discord.ui.Button, interaction: Interaction):
         """取消販售"""
         if interaction.user.id != self.original_user_id:
@@ -129,7 +136,8 @@ class ConfirmSellView(discord.ui.View):
             )
             return
         
-        sell_view = FishSellView(self.original_user_id, self.cog, page=0)
+        sell_view = FishSellView(self.original_user_id, self.cog, page=self.page)
+        await sell_view.setup_components(interaction.user.id, interaction.guild.id)
         embed = await sell_view.get_updated_embed(interaction.user.id, interaction.guild.id)
         
         await interaction.response.edit_message(
@@ -166,7 +174,7 @@ class FishSellView(discord.ui.View):
         if not user_fishes:
             embed.description = (
                 "目前沒有櫻花漁獲可以販售～\n\n"
-                "幽幽子在湖邊等你釣魚！快去使用 `/fishing` 試試手氣吧！"
+                "幽幽子在湖邊等你釣魚！快去使用 `/fish` 試試手氣吧！"
             )
         else:
             total_pages = (len(user_fishes) + self.items_per_page - 1) // self.items_per_page
@@ -214,7 +222,8 @@ class FishSellView(discord.ui.View):
 
         select_menu = discord.ui.Select(
             placeholder="請選擇你要販售的櫻花漁獲～",
-            options=select_options
+            options=select_options,
+            custom_id=f"fish_select_{self.page}"
         )
         select_menu.callback = self.select_fish_callback
         self.add_item(select_menu)
@@ -223,7 +232,8 @@ class FishSellView(discord.ui.View):
         if self.page > 0:
             prev_button = discord.ui.Button(
                 label="⬅️ 上一頁",
-                style=discord.ButtonStyle.grey
+                style=discord.ButtonStyle.grey,
+                custom_id=f"prev_page_{self.page}"
             )
             prev_button.callback = self.prev_page_callback
             self.add_item(prev_button)
@@ -231,7 +241,8 @@ class FishSellView(discord.ui.View):
         if end_idx < len(user_fishes):
             next_button = discord.ui.Button(
                 label="下一頁 ➡️",
-                style=discord.ButtonStyle.grey
+                style=discord.ButtonStyle.grey,
+                custom_id=f"next_page_{self.page}"
             )
             next_button.callback = self.next_page_callback
             self.add_item(next_button)
@@ -249,6 +260,15 @@ class FishSellView(discord.ui.View):
         selected_index = int(select_menu.values[0])
         
         user_fishes = await self.cog.get_user_fishes(interaction.user.id, interaction.guild.id)
+        
+        # 檢查索引是否有效
+        if selected_index >= len(user_fishes):
+            await interaction.response.send_message(
+                "❌ 這條魚已經不存在了，可能剛剛被賣掉了～",
+                ephemeral=True
+            )
+            return
+        
         selected_fish = user_fishes[selected_index]
         price = calculate_fish_price(selected_fish)
         
@@ -286,7 +306,7 @@ class FishSellView(discord.ui.View):
             inline=False
         )
         
-        sell_confirm_view = ConfirmSellView(selected_index, self.original_user_id, self.cog)
+        sell_confirm_view = ConfirmSellView(selected_index, self.original_user_id, self.cog, self.page)
         await interaction.response.edit_message(embed=embed, view=sell_confirm_view)
 
     async def prev_page_callback(self, interaction: Interaction):
@@ -330,7 +350,11 @@ class FishShopView(discord.ui.View):
         self.original_user_id = original_user_id
         self.cog = fish_shop_cog
 
-    @discord.ui.button(label="🌸 前往出售櫻花漁獲", style=discord.ButtonStyle.primary)
+    @discord.ui.button(
+        label="🌸 前往出售櫻花漁獲", 
+        style=discord.ButtonStyle.primary,
+        custom_id="go_to_sell"
+    )
     async def go_to_sell(self, button: discord.ui.Button, interaction: Interaction):
         """前往販售介面"""
         if interaction.user.id != self.original_user_id:
@@ -347,7 +371,7 @@ class FishShopView(discord.ui.View):
                 title="🌸 櫻花魚市通知",
                 description=(
                     "你目前沒有漁獲可以販售～\n\n"
-                    "幽幽子等你再來釣魚！快去使用 `/fishing` 試試手氣吧！"
+                    "幽幽子等你再來釣魚！快去使用 `/fish` 試試手氣吧！"
                 ),
                 color=discord.Color.red()
             )
@@ -386,8 +410,12 @@ class FishShop(commands.Cog):
         """獲取用戶的漁獲列表"""
         fishingpack_path = f"{self.data_manager.config_dir}/fishingpack.json"
         
-        async with self.file_lock:
-            fishing_data = self.data_manager._load_json(fishingpack_path) or {}
+        async with self.data_manager.save_lock:
+            fishing_data = await asyncio.to_thread(
+                self.data_manager._load_json,
+                fishingpack_path,
+                {}
+            )
         
         user_id_str = str(user_id)
         guild_id_str = str(guild_id)
@@ -409,8 +437,12 @@ class FishShop(commands.Cog):
         guild_id_str = str(guild_id)
         
         try:
-            async with self.file_lock:
-                fishing_data = self.data_manager._load_json(fishingpack_path) or {}
+            async with self.data_manager.save_lock:
+                fishing_data = await asyncio.to_thread(
+                    self.data_manager._load_json,
+                    fishingpack_path,
+                    {}
+                )
                 
                 # 獲取用戶漁獲
                 user_fishes = fishing_data.get(user_id_str, {}).get(guild_id_str, {}).get("fishes", [])
@@ -451,19 +483,23 @@ class FishShop(commands.Cog):
                 fishing_data[user_id_str][guild_id_str]["fishes"] = user_fishes
                 
                 # 保存數據
-                self.data_manager._save_json(fishingpack_path, fishing_data)
-                
-                # 異步保存所有數據
-                await self.data_manager.save_all_async()
-                
-                logger.info(f"用戶 {user_id} 售出了 {fish.get('name')}，獲得 {price} 幽靈幣")
-                
-                return {
-                    "success": True,
-                    "fish": fish,
-                    "price": price,
-                    "remaining_fishes": len(user_fishes)
-                }
+                await asyncio.to_thread(
+                    self.data_manager._save_json,
+                    fishingpack_path,
+                    fishing_data
+                )
+            
+            # 異步保存所有數據
+            await self.data_manager.save_all_async()
+            
+            logger.info(f"用戶 {user_id} 售出了 {fish.get('name')}，獲得 {price} 幽靈幣")
+            
+            return {
+                "success": True,
+                "fish": fish,
+                "price": price,
+                "remaining_fishes": len(user_fishes)
+            }
                 
         except Exception as e:
             logger.error(f"售出漁獲時發生錯誤: {e}", exc_info=True)
@@ -474,7 +510,7 @@ class FishShop(commands.Cog):
 
     @discord.slash_command(
         name="fish_shop",
-        description="幽幽子的櫻花湖漁獲商店～"
+        description="🌸 幽幽子的櫻花湖漁獲商店～"
     )
     async def fish_shop(self, ctx: ApplicationContext):
         """進入櫻花魚市"""
@@ -500,13 +536,13 @@ class FishShop(commands.Cog):
             )
             
             welcome_view = FishShopView(ctx.user.id, self)
-            await ctx.respond(embed=welcome_embed, view=welcome_view)
+            await ctx.followup.send(embed=welcome_embed, view=welcome_view)
             
             logger.info(f"{ctx.user} 進入了櫻花魚市")
             
         except Exception as e:
             logger.error(f"開啟魚市時發生錯誤: {e}", exc_info=True)
-            await ctx.respond(
+            await ctx.followup.send(
                 "❌ 啊呀…櫻花魚市暫時無法開啟～\n幽幽子需要稍作休息，請稍後再試！",
                 ephemeral=True
             )
@@ -517,3 +553,4 @@ def setup(bot: discord.Bot):
     ✿ 幽幽子優雅地將櫻花湖漁獲商店裝進 bot ✿
     """
     bot.add_cog(FishShop(bot))
+    logger.info("FishShop Cog 已載入，櫻花魚市開張營業～")
