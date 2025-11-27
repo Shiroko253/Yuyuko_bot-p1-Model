@@ -2,9 +2,9 @@ import discord
 from discord.ext import commands
 import random
 import logging
-
-# ----------- 冥界回音之地 -----------
-FEEDBACK_CHANNEL_ID = 1372560258228162560
+import os
+import aiohttp
+from datetime import datetime, timezone
 
 logger = logging.getLogger("SakuraBot.Feedback")
 
@@ -27,14 +27,16 @@ class FeedbackView(discord.ui.View):
         ]
 
     async def handle_feedback(self, interaction: discord.Interaction, category: str):
-        """將靈魂的回音傳遞至冥界櫻花園"""
-        feedback_channel = self.bot.get_channel(FEEDBACK_CHANNEL_ID)
+        """將靈魂的回音透過 Webhook 傳遞至冥界櫻花園"""
         
-        # 檢查反饋頻道是否存在
-        if feedback_channel is None:
-            logger.error(f"無法找到反饋頻道 (ID: {FEEDBACK_CHANNEL_ID})")
+        # 從環境變數獲取 Webhook URL
+        webhook_url = os.getenv("FEEDBACK_WEBHOOK_URL")
+        
+        if not webhook_url:
+            logger.error("未設置 FEEDBACK_WEBHOOK_URL 環境變數")
             await interaction.response.send_message(
-                "哎呀～冥界回音無法傳達，櫻花小徑還沒鋪好呢…\n請聯繫幽幽子或管理員喲～ 💐",
+                "哎呀～冥界回音無法傳達，櫻花小徑還沒鋪好呢…\n"
+                "請聯繫幽幽子或管理員設置 FEEDBACK_WEBHOOK_URL！💐",
                 ephemeral=True
             )
             return
@@ -42,7 +44,8 @@ class FeedbackView(discord.ui.View):
         # 構建優雅的回音 Embed
         embed = discord.Embed(
             title="🌸 幽幽子收到的冥界靈魂回音 🌸",
-            color=discord.Color.from_rgb(255, 182, 193)
+            color=discord.Color.from_rgb(255, 182, 193),
+            timestamp=datetime.now(timezone.utc)
         )
         
         embed.add_field(
@@ -53,14 +56,20 @@ class FeedbackView(discord.ui.View):
         
         embed.add_field(
             name="👤 靈魂使者",
-            value=f"{interaction.user.mention} (`{interaction.user.id}`)",
+            value=f"{interaction.user.mention} (`{interaction.user.name}`)",
+            inline=True
+        )
+        
+        embed.add_field(
+            name="🆔 使用者 ID",
+            value=f"`{interaction.user.id}`",
             inline=True
         )
         
         embed.add_field(
             name="🏰 來自伺服器",
-            value=f"{interaction.guild.name if interaction.guild else '私訊'}",
-            inline=True
+            value=f"**{interaction.guild.name}**\n`{interaction.guild.id}`" if interaction.guild else "**私訊**",
+            inline=False
         )
         
         embed.add_field(
@@ -73,21 +82,43 @@ class FeedbackView(discord.ui.View):
             text=f"靈魂 ID: {interaction.user.id}",
             icon_url=interaction.user.display_avatar.url
         )
-        embed.timestamp = discord.utils.utcnow()
 
         try:
-            await feedback_channel.send(embed=embed)
-            logger.info(f"收到來自 {interaction.user} 的反饋: {category}")
-            
-            # 隨機選擇幽幽子的感謝語
+            # 使用 aiohttp 發送 Webhook
+            async with aiohttp.ClientSession() as session:
+                webhook_data = {
+                    "embeds": [embed.to_dict()],
+                    "username": "幽幽子的櫻花回音",
+                    "avatar_url": self.bot.user.display_avatar.url if self.bot.user else None
+                }
+                
+                async with session.post(webhook_url, json=webhook_data) as response:
+                    if response.status in [200, 204]:
+                        logger.info(f"收到來自 {interaction.user} ({interaction.user.id}) 的反饋: {category}")
+                        
+                        # 隨機選擇幽幽子的感謝語
+                        await interaction.response.send_message(
+                            f"✨ {random.choice(self.yuyuko_thanks)}",
+                            ephemeral=True
+                        )
+                    else:
+                        error_text = await response.text()
+                        logger.error(f"Webhook 發送失敗 (狀態碼 {response.status}): {error_text}")
+                        await interaction.response.send_message(
+                            "啊呀…櫻花瓣在半空中散落了，請稍後再試一次吧～",
+                            ephemeral=True
+                        )
+                        
+        except aiohttp.ClientError as e:
+            logger.error(f"Webhook 發送時發生網路錯誤: {e}")
             await interaction.response.send_message(
-                f"✨ {random.choice(self.yuyuko_thanks)}",
+                "櫻花小徑暫時被雲霧遮蔽了…請稍後再試～",
                 ephemeral=True
             )
-        except discord.HTTPException as e:
-            logger.error(f"發送反饋失敗: {e}")
+        except Exception as e:
+            logger.error(f"發送反饋時發生未預期錯誤: {e}", exc_info=True)
             await interaction.response.send_message(
-                "啊呀…櫻花瓣在半空中散落了，請稍後再試一次吧～",
+                "幽幽子在傳遞回音時遇到了小問題…請稍後再試吧～",
                 ephemeral=True
             )
 
@@ -95,7 +126,8 @@ class FeedbackView(discord.ui.View):
         label="指令錯誤或無回應",
         style=discord.ButtonStyle.primary,
         emoji="💬",
-        row=0
+        row=0,
+        custom_id="feedback_command_error"
     )
     async def command_error_button(self, button: discord.ui.Button, interaction: discord.Interaction):
         await self.handle_feedback(interaction, "指令錯誤或無回應")
@@ -104,7 +136,8 @@ class FeedbackView(discord.ui.View):
         label="機器人訊息問題",
         style=discord.ButtonStyle.primary,
         emoji="🤖",
-        row=0
+        row=0,
+        custom_id="feedback_message_issue"
     )
     async def message_issue_button(self, button: discord.ui.Button, interaction: discord.Interaction):
         await self.handle_feedback(interaction, "機器人訊息問題")
@@ -113,7 +146,8 @@ class FeedbackView(discord.ui.View):
         label="迷你遊戲系統錯誤",
         style=discord.ButtonStyle.primary,
         emoji="🎮",
-        row=0
+        row=0,
+        custom_id="feedback_minigame_error"
     )
     async def minigame_error_button(self, button: discord.ui.Button, interaction: discord.Interaction):
         await self.handle_feedback(interaction, "迷你遊戲系統錯誤")
@@ -122,7 +156,8 @@ class FeedbackView(discord.ui.View):
         label="建議新增功能",
         style=discord.ButtonStyle.success,
         emoji="✨",
-        row=1
+        row=1,
+        custom_id="feedback_suggest_feature"
     )
     async def suggest_feature_button(self, button: discord.ui.Button, interaction: discord.Interaction):
         await self.handle_feedback(interaction, "建議新增功能")
@@ -131,7 +166,8 @@ class FeedbackView(discord.ui.View):
         label="UI 體驗問題",
         style=discord.ButtonStyle.secondary,
         emoji="🎨",
-        row=1
+        row=1,
+        custom_id="feedback_ui_issue"
     )
     async def ui_issue_button(self, button: discord.ui.Button, interaction: discord.Interaction):
         await self.handle_feedback(interaction, "UI 體驗問題")
@@ -140,7 +176,8 @@ class FeedbackView(discord.ui.View):
         label="性能或延遲",
         style=discord.ButtonStyle.danger,
         emoji="🐢",
-        row=1
+        row=1,
+        custom_id="feedback_performance"
     )
     async def performance_issue_button(self, button: discord.ui.Button, interaction: discord.Interaction):
         await self.handle_feedback(interaction, "性能或延遲")
@@ -149,7 +186,8 @@ class FeedbackView(discord.ui.View):
         label="資料遺失/異常",
         style=discord.ButtonStyle.danger,
         emoji="📦",
-        row=2
+        row=2,
+        custom_id="feedback_data_issue"
     )
     async def data_issue_button(self, button: discord.ui.Button, interaction: discord.Interaction):
         await self.handle_feedback(interaction, "資料遺失/異常")
@@ -158,7 +196,8 @@ class FeedbackView(discord.ui.View):
         label="賭博系統問題",
         style=discord.ButtonStyle.secondary,
         emoji="🎲",
-        row=2
+        row=2,
+        custom_id="feedback_gambling_issue"
     )
     async def gambling_issue_button(self, button: discord.ui.Button, interaction: discord.Interaction):
         await self.handle_feedback(interaction, "賭博系統問題")
@@ -167,7 +206,8 @@ class FeedbackView(discord.ui.View):
         label="其他問題",
         style=discord.ButtonStyle.primary,
         emoji="❔",
-        row=2
+        row=2,
+        custom_id="feedback_other"
     )
     async def other_issue_button(self, button: discord.ui.Button, interaction: discord.Interaction):
         await self.handle_feedback(interaction, "其他問題")
@@ -181,11 +221,17 @@ class Feedback(commands.Cog):
     
     def __init__(self, bot: discord.Bot):
         self.bot = bot
-        logger.info("冥界回音系統已啟動，幽幽子開始聆聽靈魂之聲")
+        
+        # 檢查 Webhook URL 是否設置
+        webhook_url = os.getenv("FEEDBACK_WEBHOOK_URL")
+        if webhook_url:
+            logger.info("冥界回音系統已啟動，幽幽子開始聆聽靈魂之聲 (使用 Webhook)")
+        else:
+            logger.warning("未設置 FEEDBACK_WEBHOOK_URL，反饋功能將無法正常運作")
 
     @discord.slash_command(
         name="feedback",
-        description="幽幽子聆聽你的靈魂之聲～提交反饋吧！"
+        description="🌸 幽幽子聆聽你的靈魂之聲～提交反饋吧！"
     )
     async def feedback(
         self,
@@ -211,7 +257,7 @@ class Feedback(commands.Cog):
             )
 
         await ctx.respond(response_text, view=view, ephemeral=True)
-        logger.info(f"{ctx.author} 開啟了反饋選單")
+        logger.info(f"{ctx.author} ({ctx.author.id}) 開啟了反饋選單")
 
 
 def setup(bot: discord.Bot):
@@ -219,3 +265,4 @@ def setup(bot: discord.Bot):
     ✿ 幽幽子優雅地將冥界回音功能裝進 bot 裡 ✿
     """
     bot.add_cog(Feedback(bot))
+    logger.info("Feedback Cog 已載入～櫻花回音等待靈魂之聲")
