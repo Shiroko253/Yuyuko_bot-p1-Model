@@ -7,7 +7,6 @@ from typing import List, Tuple, Any
 
 logger = logging.getLogger("SakuraBot.commands.blackjack")
 
-
 # ✿ 冥界的櫻花下,幽幽子的21點遊戲 ✿
 class BlackjackGame: # 21點遊戲類別
     """幽幽子為你準備的21點遊戲,櫻花下的靈魂也要歡樂一番～"""
@@ -436,7 +435,7 @@ class Blackjack(commands.Cog):
     async def blackjack(
         self,
         ctx: discord.ApplicationContext,
-        bet: Option(float, description="下注金額 (幽靈幣)", min_value=1.0) # type: ignore # 暫時忽略該錯誤 “型別運算式中不允許呼叫運算式”
+        bet: float = Option(float, "下注金額 (幽靈幣)", min_value=1.0)
     ):
         try:
             if not hasattr(self.bot, "data_manager"):
@@ -571,7 +570,6 @@ class Blackjack(commands.Cog):
                 ).set_footer(text="如有問題請找冥界管理員"),
                 ephemeral=True
             )
-
 
 def setup(bot: discord.Bot):
     bot.add_cog(Blackjack(bot))
