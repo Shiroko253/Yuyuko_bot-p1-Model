@@ -4,7 +4,7 @@ from discord import ApplicationContext, Interaction
 import random
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 logger = logging.getLogger("SakuraBot.Fish")
 
@@ -114,13 +114,13 @@ class FishingButtons(discord.ui.View):
             guild_id = str(interaction.guild.id) if interaction.guild else "DM"
             fishingpack_path = "config/fishingpack.json"
             
-            # 準備漁獲資料,附上時間印記
+            # 準備漁獲資料,附上時間印記 (使用本地時區)
             fish_record = {
                 "name": self.latest_fish_data["name"],
                 "rarity": self.latest_fish_data["rarity"],
                 "size": self.latest_fish_data["size"],
                 "rod": self.current_rod,
-                "caught_at": datetime.now(timezone.utc).isoformat()
+                "caught_at": datetime.now(self.cog.TIMEZONE).isoformat()
             }
 
             # 使用 data_manager 的鎖保護保存操作
@@ -186,6 +186,9 @@ class Fish(commands.Cog):
         "deify": 1.0,        # 1% - 神格
         "unknown": 0.5       # 0.5% - 未知 (預設給極低機率)
     }
+    
+    # 時區設定 (UTC+8 馬來西亞/台灣/新加坡時區)
+    TIMEZONE = timezone(timedelta(hours=8))
     
     def __init__(self, bot):
         self.bot = bot
@@ -351,7 +354,7 @@ class Fish(commands.Cog):
             title="🌸 幽幽子的櫻花湖釣魚結果！",
             description=f"使用的魚竿：**{current_rod}**\n幽幽子在湖邊為你加油～櫻花隨風飄落 🌸",
             color=info["color"],
-            timestamp=datetime.now(timezone.utc)
+            timestamp=datetime.now(self.TIMEZONE)
         )
         
         embed.add_field(
