@@ -45,96 +45,109 @@ class Work(commands.Cog):
             guild_id = str(ctx.guild.id)
             user_id = str(ctx.user.id)
 
-            # 修正 data manager 調用
-            user_data: Dict[str, Any] = self.bot.data_manager._load_yaml("config/config_user.yml") or {}
-            user_balance: Dict[str, Any] = self.bot.data_manager._load_json("economy/balance.json") or {}
-            config_data: Dict[str, Any] = self.bot.data_manager._load_json("config/config.json") or {}
-            jobs_data: Dict[str, Any] = config_data.get("jobs", [{}])[0] if config_data.get("jobs") else {}
+            # 使用內存數據並加鎖
+            async with self.bot.data_manager.balance_lock:
+                # 從內存讀取 balance
+                user_balance: Dict[str, Any] = self.bot.data_manager.balance
+                
+                # 從文件讀取用戶配置和職業配置
+                user_data: Dict[str, Any] = self.bot.data_manager._load_yaml("config/config_user.yml") or {}
+                config_data: Dict[str, Any] = self.bot.data_manager._load_json("config/config.json") or {}
+                jobs_data: Dict[str, Any] = config_data.get("jobs", [{}])[0] if config_data.get("jobs") else {}
 
-            user_balance.setdefault(guild_id, {})
-            user_info = user_data.setdefault(guild_id, {}).setdefault(user_id, {})
+                user_balance.setdefault(guild_id, {})
+                user_info = user_data.setdefault(guild_id, {}).setdefault(user_id, {})
 
-            if not user_info.get("job"):
-                embed = discord.Embed(
-                    title="🌸 尚未選擇職業",
-                    description="幽幽子：你還沒有職業，快用 `/choose_jobs` 選擇命運吧！",
-                    color=discord.Color.red()
-                ).set_footer(text="幽幽子：冥界賞花要有身份～")
-                await ctx.respond(embed=embed, ephemeral=True)
-                return
-
-            job_name = user_info["job"]
-
-            # 賭徒特殊語錄
-            if job_name == "賭徒":
-                embed = discord.Embed(
-                    title="🎲 賭徒的命運",
-                    description=random.choice(GAMBLER_QUOTES),
-                    color=discord.Color.red()
-                ).set_footer(text="幽幽子：賭徒無法透過工作賺取幽靈幣，只能靠命運！")
-                await ctx.respond(embed=embed, ephemeral=True)
-                return
-
-            job_rewards = jobs_data.get(job_name)
-            if not job_rewards or not isinstance(job_rewards, dict) or "min" not in job_rewards or "max" not in job_rewards:
-                embed = discord.Embed(
-                    title="🌸 無效職業",
-                    description=f"幽幽子：職業「{job_name}」無效，請重新選擇！",
-                    color=discord.Color.red()
-                )
-                await ctx.respond(embed=embed, ephemeral=True)
-                return
-
-            user_info.setdefault("MP", 0)
-            if user_info["MP"] >= 200:
-                embed = discord.Embed(
-                    title="🌸 壓力過高！",
-                    description="幽幽子：你的心理壓力已達巔峰，快休息、賞花、吃點心吧！",
-                    color=discord.Color.red()
-                ).set_footer(text="幽幽子：亡魂要適時減壓～")
-                await ctx.respond(embed=embed, ephemeral=True)
-                return
-
-            last_cooldown = user_info.get("work_cooldown")
-            now = datetime.now()
-            if last_cooldown:
-                try:
-                    cooldown_time = datetime.fromisoformat(last_cooldown)
-                except Exception:
-                    cooldown_time = None
-                if cooldown_time and cooldown_time > now:
-                    remaining = cooldown_time - now
-                    minutes, seconds = divmod(remaining.total_seconds(), 60)
+                if not user_info.get("job"):
                     embed = discord.Embed(
-                        title="🌸 工作冷卻中",
-                        description=f"幽幽子：你還需等待 {int(minutes)} 分鐘 {int(seconds)} 秒才能再次工作！",
-                        color=discord.Color.orange()
-                    ).set_footer(text=f"職業：{job_name}")
+                        title="🌸 尚未選擇職業",
+                        description="幽幽子：你還沒有職業，快用 `/choose_jobs` 選擇命運吧！",
+                        color=discord.Color.red()
+                    ).set_footer(text="幽幽子：冥界賞花要有身份～")
                     await ctx.respond(embed=embed, ephemeral=True)
                     return
 
-            reward = random.randint(job_rewards["min"], job_rewards["max"])
-            user_balance[guild_id].setdefault(user_id, 0)
-            user_balance[guild_id][user_id] += reward
+                job_name = user_info["job"]
 
-            user_info["work_cooldown"] = (now + timedelta(seconds=WORK_COOLDOWN_SECONDS)).isoformat()
-            user_info["MP"] += 10
+                # 賭徒特殊語錄
+                if job_name == "賭徒":
+                    embed = discord.Embed(
+                        title="🎲 賭徒的命運",
+                        description=random.choice(GAMBLER_QUOTES),
+                        color=discord.Color.red()
+                    ).set_footer(text="幽幽子：賭徒無法透過工作賺取幽靈幣，只能靠命運！")
+                    await ctx.respond(embed=embed, ephemeral=True)
+                    return
 
-            # 修正儲存
-            self.bot.data_manager._save_json("economy/balance.json", user_balance)
-            self.bot.data_manager._save_yaml("config/config_user.yml", user_data)
+                job_rewards = jobs_data.get(job_name)
+                if not job_rewards or not isinstance(job_rewards, dict) or "min" not in job_rewards or "max" not in job_rewards:
+                    embed = discord.Embed(
+                        title="🌸 無效職業",
+                        description=f"幽幽子：職業「{job_name}」無效，請重新選擇！",
+                        color=discord.Color.red()
+                    )
+                    await ctx.respond(embed=embed, ephemeral=True)
+                    return
 
-            embed = discord.Embed(
-                title="🌸 工作成功！🌸",
-                description=(
-                    f"{ctx.user.mention} 作為 **{job_name}** "
-                    f"賺取了 **{reward} 幽靈幣**！🎉\n"
-                    f"當前心理壓力（MP）：{user_info['MP']}/200\n\n"
-                    f"{random.choice(YUYUKO_WORK_QUOTES)}"
-                ),
-                color=discord.Color.from_rgb(205, 133, 232)
-            ).set_footer(text=f"幽幽子：賞花、工作、吃點心三連發！")
-            await ctx.respond(embed=embed, ephemeral=True)
+                user_info.setdefault("MP", 0)
+                if user_info["MP"] >= 200:
+                    embed = discord.Embed(
+                        title="🌸 壓力過高！",
+                        description="幽幽子：你的心理壓力已達巔峰，快休息、賞花、吃點心吧！",
+                        color=discord.Color.red()
+                    ).set_footer(text="幽幽子：亡魂要適時減壓～")
+                    await ctx.respond(embed=embed, ephemeral=True)
+                    return
+
+                last_cooldown = user_info.get("work_cooldown")
+                now = datetime.now()
+                if last_cooldown:
+                    try:
+                        cooldown_time = datetime.fromisoformat(last_cooldown)
+                    except Exception:
+                        cooldown_time = None
+                    if cooldown_time and cooldown_time > now:
+                        remaining = cooldown_time - now
+                        minutes, seconds = divmod(remaining.total_seconds(), 60)
+                        embed = discord.Embed(
+                            title="🌸 工作冷卻中",
+                            description=f"幽幽子：你還需等待 {int(minutes)} 分鐘 {int(seconds)} 秒才能再次工作！",
+                            color=discord.Color.orange()
+                        ).set_footer(text=f"職業：{job_name}")
+                        await ctx.respond(embed=embed, ephemeral=True)
+                        return
+
+                reward = random.randint(job_rewards["min"], job_rewards["max"])
+                user_balance[guild_id].setdefault(user_id, 0)
+                
+                # 記錄舊餘額用於日誌
+                old_balance = user_balance[guild_id][user_id]
+                user_balance[guild_id][user_id] += reward
+                new_balance = user_balance[guild_id][user_id]
+
+                user_info["work_cooldown"] = (now + timedelta(seconds=WORK_COOLDOWN_SECONDS)).isoformat()
+                user_info["MP"] += 10
+
+                # 保存數據 - 使用 save_all() 保存內存中的 balance
+                try:
+                    self.bot.data_manager.save_all()  # 保存內存中的 balance
+                    self.bot.data_manager._save_yaml("config/config_user.yml", user_data)
+                    self.logger.info(f"💼 用戶 {user_id} 工作獲得 {reward} 幽靈幣 (餘額: {old_balance:.2f} -> {new_balance:.2f})")
+                except Exception as e:
+                    self.logger.error(f"❌ 保存工作數據失敗: {e}", exc_info=True)
+
+                embed = discord.Embed(
+                    title="🌸 工作成功！🌸",
+                    description=(
+                        f"{ctx.user.mention} 作為 **{job_name}** "
+                        f"賺取了 **{reward:,} 幽靈幣**！🎉\n"
+                        f"當前餘額：**{new_balance:,.2f}** 幽靈幣\n"
+                        f"當前心理壓力（MP）：{user_info['MP']}/200\n\n"
+                        f"{random.choice(YUYUKO_WORK_QUOTES)}"
+                    ),
+                    color=discord.Color.from_rgb(205, 133, 232)
+                ).set_footer(text=f"幽幽子：賞花、工作、吃點心三連發！")
+                await ctx.respond(embed=embed, ephemeral=True)
 
         except Exception as e:
             self.logger.exception(f"work 指令錯誤: {e}")
