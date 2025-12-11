@@ -4,10 +4,9 @@ import logging
 
 logger = logging.getLogger("SakuraBot.Kick")
 
-
 class Kick(commands.Cog):
     """幽幽子的放逐之術,將迷途的靈魂送離冥界花園"""
-    
+
     def __init__(self, bot):
         self.bot = bot
         logger.info("🌸 放逐靈魂指令已甦醒")
@@ -19,11 +18,24 @@ class Kick(commands.Cog):
     async def kick(
         self,
         ctx: discord.ApplicationContext,
-        member: discord.Member,
-        reason: str = None
+        member: discord.Option(discord.Member, "要放逐的靈魂", required=True),
+        reason: discord.Option(str, "原因", required=False) = None,
     ):
         """幽幽子輕撫櫻花,放逐不守規矩的靈魂"""
-        
+
+        # 加保險：確保member是discord.Member
+        if not isinstance(member, discord.Member):
+            await ctx.respond(
+                embed=self._create_embed(
+                    title="🌸 放逐失敗",
+                    description="目標用戶不是冥界花園的靈魂,無法放逐。",
+                    color=discord.Color.dark_red(),
+                    footer="請選擇伺服器成員"
+                ),
+                ephemeral=True
+            )
+            return
+
         # === 靈魂自省:不可放逐自己 ===
         if member.id == ctx.user.id:
             await ctx.respond(
@@ -101,19 +113,19 @@ class Kick(commands.Cog):
         try:
             kick_reason = reason or f"由 {ctx.user.name} 施展放逐之術"
             await member.kick(reason=kick_reason)
-            
+
             logger.info(f"🌸 靈魂 {member} (ID:{member.id}) 已被 {ctx.user} 放逐,原因: {kick_reason}")
-            
+
             # 成功回應
             description = (
                 f"**被放逐的靈魂**: {member.mention} (`{member.name}`)\n"
                 f"**執行者**: {ctx.user.mention}\n"
                 f"**原因**: {reason or '未提供原因'}\n"
             )
-            
+
             if not dm_status:
                 description += "\n⚠️ *無法私訊通知該靈魂(可能已關閉私訊)*"
-            
+
             await ctx.respond(
                 embed=self._create_embed(
                     title="🌸 靈魂已被放逐",
@@ -123,7 +135,7 @@ class Kick(commands.Cog):
                 ),
                 ephemeral=False
             )
-            
+
         except discord.Forbidden as e:
             logger.error(f"❌ 放逐失敗 (權限不足): {e}")
             await ctx.respond(
@@ -162,11 +174,11 @@ class Kick(commands.Cog):
                 timestamp=discord.utils.utcnow()
             )
             embed.set_footer(text="幽幽子的冥界秩序", icon_url=self.bot.user.avatar.url if self.bot.user.avatar else None)
-            
+
             await member.send(embed=embed)
             logger.info(f"✅ 已私訊通知被踢用戶 {member}")
             return True
-            
+
         except discord.Forbidden:
             logger.warning(f"⚠️ 無法私訊 {member} (用戶可能關閉了私訊)")
             return False
@@ -186,7 +198,6 @@ class Kick(commands.Cog):
         if footer:
             embed.set_footer(text=footer)
         return embed
-
 
 def setup(bot):
     bot.add_cog(Kick(bot))
