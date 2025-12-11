@@ -42,8 +42,8 @@ class LeaderboardCog(commands.Cog):
         try:
             guild_id = str(ctx.guild.id)
 
-            # ----------- 載入冥界記憶 -----------
-            balance_data = self.data_manager._load_json("economy/balance.json", {})
+            # ✨ 修改：直接使用內存中的數據（只讀不需要鎖）
+            balance_data = self.data_manager.balance
             server_vault = self.data_manager._load_json("economy/server_vault.json", {})
 
             # ----------- 構建主 Embed -----------
