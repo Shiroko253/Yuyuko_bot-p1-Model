@@ -8,6 +8,8 @@ from time import time
 from dotenv import load_dotenv
 import discord
 from discord.ext import commands
+import asyncio
+import argparse
 from license_check import check_license
 
 # ----------- 靈魂日誌的啟動 -----------
@@ -44,12 +46,28 @@ logger.info("━━━━━━━━━━━━━━━━━━━━━━�
 
 check_license(auto_fix=True)
 
+# ----------- 解析啟動參數 -----------
+parser = argparse.ArgumentParser(description='啟動幽幽子機器人')
+parser.add_argument('mode', nargs='?', default='main', choices=['main', 'test'], 
+                    help='選擇運行模式: main (正式環境) 或 test (測試環境), 預設為 main')
+args = parser.parse_args()
+
 # ----------- 喚醒幽幽子的密鑰 -----------
 load_dotenv()
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+
+# 根據模式選擇對應的 token
+if args.mode == 'main':
+    BOT_TOKEN = os.getenv("BOT_TOKEN")
+    token_name = "BOT_TOKEN"
+    logger.info("🌸 幽幽子將以【正式模式】甦醒")
+else:
+    BOT_TOKEN = os.getenv("TEST_BOT_TOKEN")
+    token_name = "TEST_BOT_TOKEN"
+    logger.info("🌸 幽幽子將以【測試模式】甦醒")
+
 if not BOT_TOKEN:
-    logger.error("未找到靈魂密鑰 BOT_TOKEN,幽幽子無法甦醒")
-    raise RuntimeError("Missing BOT_TOKEN in .env file")
+    logger.error(f"未找到靈魂密鑰 {token_name},幽幽子無法甦醒")
+    raise RuntimeError(f"Missing {token_name} in .env file")
 
 # ----------- 設定靈魂的感知能力 -----------
 intents = discord.Intents.default()
@@ -68,6 +86,10 @@ class SakuraDataManager:
         self.config_dir = "config"
         os.makedirs(self.economy_dir, exist_ok=True)
         os.makedirs(self.config_dir, exist_ok=True)
+        
+        # 只為需要的數據加鎖
+        self.balance_lock = asyncio.Lock()  # 只保護 balance
+        self.save_lock = asyncio.Lock()     # 保護保存操作
         
         # 初始化資料檔案,如櫻花初綻
         self._initialize_json(f"{self.economy_dir}/balance.json")
@@ -169,17 +191,24 @@ class SakuraDataManager:
             logger.error(f"無法初始化資料庫:{e}")
 
     def save_all(self):
-        """將所有資料封存,猶如櫻花瓣落入永恆"""
+        """將所有資料封存,猶如櫻花瓣落入永恆 (同步版本,僅供內部使用)"""
         self._save_json(f"{self.economy_dir}/balance.json", self.balance)
         self._save_json(f"{self.config_dir}/blackjack_data.json", self.blackjack_data)
         self._save_json(f"{self.config_dir}/invalid_bet_count.json", self.invalid_bet_count)
         self._save_json(f"{self.config_dir}/bot_status.json", self.bot_status)
         self._save_json(f"{self.config_dir}/dm_messages.json", self.dm_messages)
+    
+    async def save_all_async(self):
+        """異步保存所有資料 (帶鎖保護)"""
+        async with self.save_lock:
+            await asyncio.to_thread(self.save_all)
+            logger.info("數據已安全保存")
 
 # ----------- 幽幽子的靈魂啟動 -----------
 bot.data_manager = SakuraDataManager()
 bot.start_time = time()
 bot.last_activity_time = bot.start_time
+bot.run_mode = args.mode  # 儲存運行模式,方便其他模組使用
 
 # ----------- 載入指令與事件的花瓣 -----------
 for folder in ['commands', 'events']:
