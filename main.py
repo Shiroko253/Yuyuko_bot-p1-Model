@@ -8,6 +8,8 @@ from time import time
 from dotenv import load_dotenv
 import discord
 from discord.ext import commands
+import asyncio
+import argparse
 from license_check import check_license
 
 # ----------- 靈魂日誌的啟動 -----------
@@ -44,12 +46,28 @@ logger.info("━━━━━━━━━━━━━━━━━━━━━━�
 
 check_license(auto_fix=True)
 
+# ----------- 解析啟動參數 -----------
+parser = argparse.ArgumentParser(description='啟動幽幽子機器人')
+parser.add_argument('mode', nargs='?', default='main', choices=['main', 'test'], 
+                    help='選擇運行模式: main (正式環境) 或 test (測試環境), 預設為 main')
+args = parser.parse_args()
+
 # ----------- 喚醒幽幽子的密鑰 -----------
 load_dotenv()
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+
+# 根據模式選擇對應的 token
+if args.mode == 'main':
+    BOT_TOKEN = os.getenv("BOT_TOKEN")
+    token_name = "BOT_TOKEN"
+    logger.info("🌸 幽幽子將以【正式模式】甦醒")
+else:
+    BOT_TOKEN = os.getenv("TEST_BOT_TOKEN")
+    token_name = "TEST_BOT_TOKEN"
+    logger.info("🌸 幽幽子將以【測試模式】甦醒")
+
 if not BOT_TOKEN:
-    logger.error("未找到靈魂密鑰 BOT_TOKEN，幽幽子無法甦醒")
-    raise RuntimeError("Missing BOT_TOKEN in .env file")
+    logger.error(f"未找到靈魂密鑰 {token_name},幽幽子無法甦醒")
+    raise RuntimeError(f"Missing {token_name} in .env file")
 
 # ----------- 設定靈魂的感知能力 -----------
 intents = discord.Intents.default()
@@ -61,7 +79,7 @@ bot = discord.Bot(intents=intents, auto_sync_commands=True)
 
 # ----------- 冥界資料管理之靈魂核心 -----------
 class SakuraDataManager:
-    """管理幽幽子花園中的資料，猶如櫻瓣隨風飄舞"""
+    """管理幽幽子花園中的資料,猶如櫻瓣隨風飄舞"""
     
     def __init__(self):
         self.economy_dir = "economy"
@@ -69,14 +87,18 @@ class SakuraDataManager:
         os.makedirs(self.economy_dir, exist_ok=True)
         os.makedirs(self.config_dir, exist_ok=True)
         
-        # 初始化資料檔案，如櫻花初綻
+        # 只為需要的數據加鎖
+        self.balance_lock = asyncio.Lock()  # 只保護 balance
+        self.save_lock = asyncio.Lock()     # 保護保存操作
+        
+        # 初始化資料檔案,如櫻花初綻
         self._initialize_json(f"{self.economy_dir}/balance.json")
         self._initialize_json(f"{self.config_dir}/blackjack_data.json")
         self._initialize_json(f"{self.config_dir}/invalid_bet_count.json")
         self._initialize_json(f"{self.config_dir}/bot_status.json", {"disconnect_count": 0, "reconnect_count": 0, "last_event_time": None})
         self._initialize_json(f"{self.config_dir}/dm_messages.json")
 
-        # 載入資料，猶如召喚冥界記憶
+        # 載入資料,猶如召喚冥界記憶
         self.balance = self._load_json(f"{self.economy_dir}/balance.json")
         self.blackjack_data = self._load_json(f"{self.config_dir}/blackjack_data.json")
         self.invalid_bet_count = self._load_json(f"{self.config_dir}/invalid_bet_count.json")
@@ -87,7 +109,7 @@ class SakuraDataManager:
 
     @staticmethod
     def _initialize_json(file_path: str, default: dict = None):
-        """創建空的 JSON 檔案，如櫻花瓣靜靜落下"""
+        """創建空的 JSON 檔案,如櫻花瓣靜靜落下"""
         if default is None:
             default = {}
         if not os.path.exists(file_path):
@@ -95,59 +117,59 @@ class SakuraDataManager:
                 os.makedirs(os.path.dirname(file_path), exist_ok=True)
                 with open(file_path, "w", encoding="utf-8") as f:
                     json.dump(default, f, indent=4, ensure_ascii=False)
-                logger.info(f"已創建 JSON 檔案：{file_path}")
+                logger.info(f"已創建 JSON 檔案:{file_path}")
             except Exception as e:
-                logger.error(f"無法創建 JSON 檔案 {file_path}：{e}")
+                logger.error(f"無法創建 JSON 檔案 {file_path}:{e}")
 
     @staticmethod
     def _load_json(file_path: str, default: dict = None) -> dict:
-        """載入 JSON 檔案，喚醒沉睡的記憶"""
+        """載入 JSON 檔案,喚醒沉睡的記憶"""
         if default is None:
             default = {}
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 return json.load(f) or default
         except Exception as e:
-            logger.error(f"無法載入 JSON 檔案 {file_path}：{e}")
+            logger.error(f"無法載入 JSON 檔案 {file_path}:{e}")
             return default
 
     @staticmethod
     def _save_json(file_path: str, data: dict):
-        """保存資料至 JSON，猶如將記憶封存於櫻花樹下"""
+        """保存資料至 JSON,猶如將記憶封存於櫻花樹下"""
         try:
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
         except Exception as e:
-            logger.error(f"無法保存 JSON 檔案 {file_path}：{e}")
+            logger.error(f"無法保存 JSON 檔案 {file_path}:{e}")
 
     @staticmethod
     def _load_yaml(file_path: str, default: dict = None) -> dict:
-        """載入 YAML 檔案，如幽幽子輕撫記憶的花瓣"""
+        """載入 YAML 檔案,如幽幽子輕撫記憶的花瓣"""
         if default is None:
             default = {}
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 return yaml.safe_load(f) or default
         except Exception as e:
-            logger.error(f"無法載入 YAML 檔案 {file_path}：{e}")
+            logger.error(f"無法載入 YAML 檔案 {file_path}:{e}")
             return default
 
     @staticmethod
     def _save_yaml(file_path: str, data: dict):
-        """保存資料至 YAML，封存於冥界的花園"""
+        """保存資料至 YAML,封存於冥界的花園"""
         try:
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
             with open(file_path, "w", encoding="utf-8") as f:
                 yaml.safe_dump(data, f, allow_unicode=True)
         except Exception as e:
-            logger.error(f"無法保存 YAML 檔案 {file_path}：{e}")
+            logger.error(f"無法保存 YAML 檔案 {file_path}:{e}")
 
     def _init_db(self):
-        """初始化 SQLite 資料庫，構築幽幽子的記憶殿堂"""
-        db_path = os.path.join(self.config_dir, "example.db")
+        """初始化 SQLite 資料庫,構築幽幽子的記憶殿堂"""
+        self.db_path = os.path.join(self.config_dir, "sakura_bot.db")
         try:
-            with sqlite3.connect(db_path) as conn:
+            with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 cursor.execute('''
                     CREATE TABLE IF NOT EXISTS UserMessages 
@@ -166,21 +188,27 @@ class SakuraDataManager:
                 conn.commit()
                 logger.info("已初始化 SQLite 資料庫")
         except sqlite3.Error as e:
-            logger.error(f"無法初始化資料庫：{e}")
+            logger.error(f"無法初始化資料庫:{e}")
 
     def save_all(self):
-        """將所有資料封存，猶如櫻花瓣落入永恆"""
+        """將所有資料封存,猶如櫻花瓣落入永恆 (同步版本,僅供內部使用)"""
         self._save_json(f"{self.economy_dir}/balance.json", self.balance)
         self._save_json(f"{self.config_dir}/blackjack_data.json", self.blackjack_data)
         self._save_json(f"{self.config_dir}/invalid_bet_count.json", self.invalid_bet_count)
         self._save_json(f"{self.config_dir}/bot_status.json", self.bot_status)
         self._save_json(f"{self.config_dir}/dm_messages.json", self.dm_messages)
+    
+    async def save_all_async(self):
+        """異步保存所有資料 (帶鎖保護)"""
+        async with self.save_lock:
+            await asyncio.to_thread(self.save_all)
+            logger.info("數據已安全保存")
 
 # ----------- 幽幽子的靈魂啟動 -----------
 bot.data_manager = SakuraDataManager()
 bot.start_time = time()
 bot.last_activity_time = bot.start_time
-bot.black_hole_users = set()
+bot.run_mode = args.mode  # 儲存運行模式,方便其他模組使用
 
 # ----------- 載入指令與事件的花瓣 -----------
 for folder in ['commands', 'events']:
@@ -190,12 +218,21 @@ for folder in ['commands', 'events']:
                 extension_name = f'{folder}.{filename[:-3]}'
                 try:
                     bot.load_extension(extension_name)
-                    logger.info(f"已載入花瓣模組：{extension_name}")
+                    logger.info(f"已載入花瓣模組:{extension_name}")
                 except Exception as e:
-                    logger.error(f"無法載入模組 {extension_name}：{e}")
+                    logger.error(f"無法載入模組 {extension_name}:{e}")
     except FileNotFoundError:
-        logger.warning(f"未找到花園路徑 {folder}，略過載入")
+        logger.warning(f"未找到花園路徑 {folder},略過載入")
 
-# ----------- 喚醒幽幽子，步入 Discord 世界 -----------
-logger.info("🌸 幽幽子準備甦醒，櫻花即將綻放...")
-bot.run(BOT_TOKEN)
+# ----------- 喚醒幽幽子,步入 Discord 世界 -----------
+try:
+    bot.run(BOT_TOKEN)
+except KeyboardInterrupt:
+    logger.info("幽幽子正在優雅地離去...")
+    bot.data_manager.save_all()
+    logger.info("所有記憶已封存於櫻花樹下")
+except Exception as e:
+    logger.critical(f"幽幽子遭遇致命錯誤:{e}", exc_info=True)
+    bot.data_manager.save_all()
+finally:
+    logger.info("靈魂已歸於寂靜")

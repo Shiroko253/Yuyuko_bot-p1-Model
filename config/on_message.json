@@ -1,0 +1,104 @@
+{
+  "simple_responses": {
+    "關於機器人幽幽子": "幽幽子的創建時間是<t:1623245700:D>",
+    "關於製作者": "製作者是個很好的人 雖然看上有有點怪怪的",
+    "幽幽子的生日": "機器人幽幽子的生日在<t:1623245700:D>",
+    "吃蛋糕嗎": "蛋糕？！ 在哪在哪？",
+    "關於停雲": "停雲小姐呀，我記的是一位叫yan的開發者製作的一個discord bot 吧~"
+  },
+  "random_responses": {
+    "關於食物": [
+      "食物是生命的源泉呢～",
+      "啊，又是美味的一天♪",
+      "妖夢，今天的點心準備好了嗎？"
+    ],
+    "對於死亡": [
+      "死亡只是另一段旅程的開始。",
+      "在冥界，死亡並不可怕哦～",
+      "每個人終將歸於寂靜。"
+    ],
+    "對於生死": [
+      "生與死，如櫻花綻放與凋零。",
+      "生命的輪迴，是這世界最美的詩篇。",
+      "死亡並非終結，而是回歸。"
+    ],
+    "關於幽幽子": [
+      "我只是個悠閒的幽靈公主罷了～",
+      "白玉樓的春天，是最美的呢。",
+      "操縱死亡的能力...算是詛咒還是祝福呢？"
+    ],
+    "幽幽子的朋友": [
+      "紫是我最好的朋友呢～",
+      "妖夢總是那麼認真，真可愛♪",
+      "偶爾去神社找靈夢聊聊天也不錯。"
+    ],
+    "關於紅魔館的女僕": [
+      "咲夜的時間操控能力真是方便呢～",
+      "紅魔館的女僕長，能力和效率都很出色。"
+    ],
+    "關於紅魔舘的大小姐和二小姐": [
+      "蕾米莉亞雖然看起來高傲，其實很可愛呢。",
+      "芙蘭朵露...那孩子有點危險，要小心哦。"
+    ],
+    "關於神社的巫女": [
+      "靈夢總是那麼忙碌呢～",
+      "博麗神社的巫女，守護著幻想鄉的平衡。"
+    ]
+  },
+  "complex_responses": {
+    "吃三色糰子嗎": [
+      {"text": "三色糰子啊，以前妖夢...", "delay": 3},
+      {"text": "...", "delay": 3},
+      {"text": "算了 妖夢不在 我就算不吃東西 反正我是餓不死的存在", "delay": 3},
+      {"text": "... 妖夢...你在哪...我好想你...", "delay": 3},
+      {"text": "To be continued...\n-# 妖夢機器人即將到來", "delay": 0}
+    ],
+    "閉嘴蜘蛛俠": [
+      {"text": "deadpool: This is Deadpool 2, not Titanic! Stop serenading me, Celine!", "delay": 3},
+      {"text": "deadpool: You're singing way too good, can you sing it like crap for me?!", "delay": 3},
+      {"text": "Celine Dion: Shut up, Spider-Man!", "delay": 3},
+      {"text": "deadpool: sh*t, I really should have gone with NSYNC!", "delay": 0}
+    ],
+    "星爆氣流斬": [
+      {"text": "アスナ！クライン！", "delay": 0},
+      {"text": "**頼む、十秒だけ持ち堪えてくれ！**", "delay": 2},
+      {"text": "スイッチ！", "delay": 10},
+      {"text": "# スターバースト　ストリーム！", "delay": 5},
+      {"text": "**速く…もっと速く！！**", "delay": 15},
+      {"text": "終わった…のか？", "delay": 0}
+    ],
+    "再見 納維萊特": [
+      {"text": "https://tenor.com/view/furina-focalors-genshin-genshin-impact-dance-gif-13263528549516779829", "delay": 0}
+    ]
+  },
+  "jojo_time_stop": {
+    "trigger": "これが最後の一撃だ！名に恥じぬ、ザ・ワールド、時よ止まれ！",
+    "responses": [
+      {"text": "ザ・ワールド\nhttps://tenor.com/view/the-world-gif-18508433", "delay": 1},
+      {"text": "一秒経過だ！", "delay": 3},
+      {"text": "二秒経過だ、三秒経過だ！", "delay": 4},
+      {"text": "四秒経過だ！", "delay": 5},
+      {"text": "五秒経過だ！", "delay": 6},
+      {"text": "六秒経過だ！", "delay": 7},
+      {"text": "七秒経過した！", "delay": 8},
+      {"text": "ジョジョよ、**私のローラー**!\nhttps://tenor.com/view/dio-roada-rolla-da-dio-brando-dio-dio-jojo-dio-part3-gif-16062047", "delay": 9},
+      {"text": "遅い！逃げられないぞ！\nhttps://tenor.com/view/dio-jojo-gif-13742432", "delay": 0}
+    ]
+  },
+  "pucci_heaven": {
+    "trigger": "普奇神父",
+    "delete_trigger": true,
+    "responses": [
+      {"text": "引力を信じるか？", "delay": 3},
+      {"text": "私は最初にキノコを食べた者を尊敬する。毒キノコかもしれないのに。", "delay": 5},
+      {"text": "DIO…", "delay": 2},
+      {"text": "私がこの力を完全に使いこなせるようになったら、必ず君を目覚めさせるよ。", "delay": 5},
+      {"text": "人は…いずれ天国へ至るものだ。", "delay": 3},
+      {"text": "最後に言うよ…時間が加速し始める。降りてこい、DIO。", "delay": 1},
+      {"text": "螺旋階段、甲虫、廃墟の街、果物のタルト、ドロテアの道、、特異点、ジョット、天使、紫陽花、秘密の皇帝…", "delay": 2},
+      {"text": "ここまでだ。", "delay": 0},
+      {"text": "天国へのカウントダウンが始まる…", "delay": 2},
+      {"text": "# メイド・イン・ヘブン！！", "delay": 0}
+    ]
+  }
+}
