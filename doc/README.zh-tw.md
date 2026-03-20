@@ -20,8 +20,8 @@
 你好，使用者！我是 **Shiroko** —— 負責照顧這位大小姐飲食起居的開發者。  
 感謝你把我們接回家，記得準時餵食...啊不是，是維護。
 
-[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
-[![Pycord](https://img.shields.io/badge/Pycord-v2.0+-5865F2.svg)](https://pypi.org/project/pycord/)
+[![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/)
+[![Pycord](https://img.shields.io/badge/Pycord-v2.7.1-5865F2.svg)](https://pypi.org/project/py-cord/)
 [![License](https://img.shields.io/badge/License-GPL%20v3-green.svg)](../LICENSE)
 
 </div>
