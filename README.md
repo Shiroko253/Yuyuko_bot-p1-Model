@@ -10,110 +10,126 @@
 
 <hr>
 
+<img src="https://media.giphy.com/media/v1.Y2lkY2E0ZmJmZGJkYi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2RlZi9jY2RlZmFiY2......" alt="Yuyuko Sleeping" width="150">
+<!-- 建議替换為實際的幽幽子睡覺或吃糰子 GIF -->
+
+# 🌸 Yuyuko Bot
+
+> *"Zzz... Hm? You need something? Make it quick, I was dreaming about dango..."*
+
+Hello, user! I'm **Shiroko** — the developer who keeps Yuyuko fed.  
+Thank you for inviting her to your server. Please try not to wake her up unnecessarily.
+
+[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
+[![Pycord](https://img.shields.io/badge/Pycord-v2.0+-5865F2.svg)](https://pypi.org/project/pycord/)
+[![License](https://img.shields.io/badge/License-GPL%20v3-green.svg)](./LICENSE)
+
 </div>
 
-# Welcome to Yuyuko Bot
+---
 
-Hello, user! I’m **Shiroko** — the developer of Yuyuko Bot.
+## 💤 Current Status
 
-Thank you for using my Discord bot, I truly appreciate your support!
+Yuyuko Bot is currently **fully modularized (Cogs)**.  
+Basically, I organized her brain so she doesn't crash when she tries to think too hard.
+
+### Why did we change this?
+
+| Old Version 😫 | New Version 😌 | Why? |
+| :--- | :--- | :--- |
+| All commands in one messy file | **Separated Cogs** | Easier to find things when she loses them. |
+| Hard to fix bugs | **Easy Maintenance** | Less headache for Shiroko. |
+| Tightly coupled code | **Independent Modules** | If fishing breaks, gambling still works. |
+| Rigid | **Flexible** | She can nap while we update features. |
+
+> **Note:** This means less downtime for Yuyuko to sleep... I mean, to maintain.
 
 ---
 
-## Current Features
+## 📜 Command List
 
-The current version of **Yuyuko Bot** is fully **modularized with Cogs**,  
-which allows for easier maintenance and future expansion.
+### 🍵 General (Polite Greetings)
 
-### Differences from the Previous Version
+| Command | Description | Usage |
+| :--- | :--- | :--- |
+| `/about-bot` | Who is Yuyuko? (She's hungry) | `/about-bot` |
+| `/invite` | Get an invite link | `/invite` |
+| `/time` | How long has she been idle? | `/time` |
+| `/ping` | Check if she's awake or lagging | `/ping` |
+| `/server_info` | Server details | `/server_info` |
+| `/user_info` | Check your profile | `/user_info @user` |
+| `/feedback` | Tell Shiroko something broke | `/feedback Help...` |
+| `/quiz` | A mini-game (if she cares) | `/quiz` |
 
-| Previous Version                                 | Current Version                                   | Explanation                                                                                  |
-| ------------------------------------------------ | ------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| All `@bot.slash_command` in a single file        | Fully modularized with **Cogs**                   | Each command is separated into its own module, making development and management much easier. |
-| Hard to maintain and expand                      | Easy maintenance and scalable design              | You can add, remove, or update features without affecting other parts of the bot.             |
-| Commands tightly coupled with core code          | Commands separated into independent modules       | Reduces code coupling and improves code readability.                                         |
-| Limited flexibility                             | Highly flexible and future-proof                  | Supports hot-reloading modules and seamless future upgrades.                                 |
+### 💰 Economy (Snack Fund)
 
-> - **Modularization (Cogs):** Each main function/command is in its own file, making it easy to add or remove functionality.
-> - **Easy maintenance and scalability:** Add or remove features anytime without breaking other parts.
-> - **Independent command modules:** Commands are separated, making development and troubleshooting clearer.
-> - **Future-proof:** Supports dynamic loading/unloading/reloading, so new features can be added easily.
+> **Currency:** 👻 **Ghost Coins** (Not real money, but buys virtual snacks)
 
----
+| Command | Description | Usage |
+| :--- | :--- | :--- |
+| `/balance` | Check your poverty level | `/balance` |
+| `/leaderboard` | Who has the most snacks? | `/leaderboard` |
+| `/choose_job` | Pick a job (UI Selection) | `/choose_job` |
+| `/reset_job` | Quit your job (Lazy mode) | `/reset_job` |
+| `/work` | Work for 60s cooldown (So tired...) | `/work` |
+| `/shop` | Buy stress-relief items | `/shop` |
+| `/backpack` | What do you own? | `/backpack` |
+| `/server_bank` | Yuyuko's personal vault | `/server_bank` |
+| `/pay` | Give money to someone | `/pay @user 100` |
 
-## Command List
+### 🔨 Admin (Don't Abuse)
 
-### General Commands
+> **⚠️ Warning:** Yuyuko's role must be **highest**, or she won't listen.
 
-| Command        | Description                                  | Usage Example             |
-| -------------- | -------------------------------------------- | ------------------------- |
-| `/about-bot`   | Information about Yuyuko                     | `/about-bot`              |
-| `/invite`      | Generate Yuyuko’s invitation link            | `/invite`                 |
-| `/time`        | Check how long Yuyuko has been idle          | `/time`                   |
-| `/ping`        | Check Yuyuko’s latency with the real world   | `/ping`                   |
-| `/server_info` | View server information                      | `/server_info`            |
-| `/user_info`   | View user profile information                | `/user_info @user`        |
-| `/feedback`    | Report issues to Yuyuko for developer fixing | `/feedback Something...`  |
-| `/quiz`        | Quick quiz mini-game                         | `/quiz`                   |
+| Command | Description | Usage |
+| :--- | :--- | :--- |
+| `/ban` | Banish a user | `/ban @user [reason]` |
+| `/kick` | Kick a user out | `/kick @user` |
+| `/start_giveaway` | Give away free stuff | `/start_giveaway Prize` |
+| `/timeout` | Shut someone up (Mute) | `/timeout @user 10` |
+| `/untimeout` | Let them speak again | `/untimeout @user` |
+| `/tax` | **"Speaking Tax!"** (Collect funds) | `/tax` |
 
-### Economy System
+### 🎣 Fishing (Is there food?)
 
-> **Note:** Currency unit = **Ghost Coins**, not shared with other bots.
+| Command | Description | Usage |
+| :--- | :--- | :--- |
+| `/fish` | Try to catch something (maybe trash) | `/fish` |
+| `/fish_back` | Show your catch | `/fish_back` |
+| `/fish_shop` | Sell the trash... I mean, treasure | `/fish_shop` |
 
-| Command        | Description                                            | Usage Example                |
-| -------------- | ------------------------------------------------------ | ---------------------------- |
-| `/balance`     | View current balance                                   | `/balance`                   |
-| `/leaderboard` | View richest players & tax leaderboard                 | `/leaderboard`               |
-| `/choose_job`  | Choose a job to earn money (select from UI, not manual input)  | `/choose_job` (select via UI) |
-| `/reset_job`   | Reset your chosen job                                  | `/reset_job`                 |
-| `/work`        | Perform your job (cooldown: 60s)                       | `/work`                      |
-| `/shop`        | Visit the shop to buy stress-relief items              | `/shop`                      |
-| `/backpack`    | View your inventory                                    | `/backpack`                  |
-| `/server_bank` | View Yuyuko’s virtual bank                             | `/server_bank`               |
-| `/pay`         | Transfer money to another player                       | `/pay @user 100`             |
+### 🎲 Gambling (Risk it for snacks)
 
-### Admin Commands
+| Command | Description | Usage |
+| :--- | :--- | :--- |
+| `/blackjack` | Play cards (**2x rewards** for special jobs!) | `/blackjack 100` |
 
-> **Note:** Yuyuko’s role must be at the top of the role list to use these.
+### 🔒 Developer Only (Secrets)
 
-| Command           | Description           | Usage Example          |
-| ----------------- | --------------------- | ---------------------- |
-| `/ban`            | Ban a user            | `/ban @user [reason]`  |
-| `/kick`           | Kick a user           | `/kick @user`          |
-| `/start_giveaway` | Start a giveaway      | `/start_giveaway Prize`|
-| `/timeout`        | Timeout a user (mute) | `/timeout @user 10`    |
-| `/untimeout`      | Remove timeout        | `/untimeout @user`     |
-| `/tax`         | “I hereby declare a speaking tax!” | `/tax`       |
+> 🚫 **Normal humans cannot access these.**
 
-### Fishing
-
-| Command      | Description                            | Usage Example      |
-| ------------ | -------------------------------------- | ------------------ |
-| `/fish`      | Start fishing (you might catch trash…) | `/fish`            |
-| `/fish_back` | View or display your fishing inventory | `/fish_back`       |
-| `/fish_shop` | Sell your catches                      | `/fish_shop`       |
-
-### Gambling
-
-| Command      | Description                                       | Usage Example        |
-| ------------ | ------------------------------------------------- | -------------------- |
-| `/blackjack` | Play Blackjack (special jobs get **2x rewards**!) | `/blackjack 100`     |
-
-### Developer-Only Commands
-
-> These are not available for normal users or admins.
-
-| Command        | Description                        | Usage Example          |
-| -------------- | ---------------------------------- | ---------------------- |
-| `/shutdown`    | Shut down Yuyuko                   | `/shutdown`            |
-| `/restart`     | Restart the bot                    | `/restart`             |
-| `/addmoney`    | Add money to a user                | `/addmoney @user 500`  |
-| `/removemoney` | Remove money from a user           | `/removemoney @user 50`|
-| `/join`        | Let Yuyuko join a voice channel    | `/join`                |
-| `/leave`       | Let Yuyuko leave a voice channel   | `/leave`               |
+| Command | Description | Usage |
+| :--- | :--- | :--- |
+| `/shutdown` | Put Yuyuko to sleep | `/shutdown` |
+| `/restart` | Wake her up again | `/restart` |
+| `/addmoney` | Cheat money (Shh...) | `/addmoney @user 500` |
+| `/removemoney` | Take money away | `/removemoney @user 50` |
+| `/join` | Join voice channel | `/join` |
+| `/leave` | Leave voice channel | `/leave` |
 
 ---
 
-## License
+## 📄 License
 
-[**GNU General Public License v3.0 (GPL v3.0)**](./LICENSE)
+This project is licensed under the [**GNU General Public License v3.0**](./LICENSE).  
+*Please don't steal her snacks.*
+
+<div align="center">
+
+<hr>
+
+<p>
+  <em>Made with 💤 and 🍡 by Shiroko</em>
+</p>
+
+</div>
