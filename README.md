@@ -88,7 +88,7 @@ Basically, I organized her brain so she doesn't crash when she tries to think to
 | `/start_giveaway` | Give away free stuff | `/start_giveaway Prize` |
 | `/timeout` | Shut someone up (Mute) | `/timeout @user 10` |
 | `/untimeout` | Let them speak again | `/untimeout @user` |
-| `/tax` | **"Speaking Tax!"** (Collect funds) | `/tax` |
+| `/tax` | **["Speaking Tax!"](https://youtu.be/QmYVLAUwj9E?si=SBOMdRbBzqOqR6Hr&t=27)**  | `/tax` |
 
 ### 🎣 Fishing (Is there food?)
 
