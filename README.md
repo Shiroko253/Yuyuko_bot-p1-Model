@@ -21,7 +21,7 @@ Hello, user! I'm **Shiroko** — the developer who keeps Yuyuko fed.
 Thank you for inviting her to your server. Please try not to wake her up unnecessarily.
 
 [![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/)
-[![Pycord](https://img.shields.io/badge/Py-cord-v2.7.1-5865F2.svg)](https://pypi.org/project/py-cord/)
+[![Pycord](https://img.shields.io/badge/pycord-v2.7.1-5865F2.svg)](https://pypi.org/project/py-cord/)
 [![License](https://img.shields.io/badge/License-GPL%20v3-green.svg)](./LICENSE)
 
 </div>
