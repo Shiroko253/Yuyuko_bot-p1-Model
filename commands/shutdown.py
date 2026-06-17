@@ -9,47 +9,43 @@ import aiohttp
 logger = logging.getLogger("SakuraBot.Shutdown")
 
 AUTHOR_ID = int(os.getenv("AUTHOR_ID", 0))
+OFFLINE_WEBHOOK_URL = os.getenv("OFFLINE_WEBHOOK_URL")
 
 
 async def send_webhook_message(bot, content: str, color: discord.Color):
-    """向 Webhook 發送訊息"""
-    webhook_url = os.getenv("WEBHOOK_URL")
-    
-    if not webhook_url:
-        logger.error("❌ Webhook URL 未配置")
-        raise ValueError("Webhook URL 未配置")
-    
+    """向 Webhook 發送關機通知"""
+    if not OFFLINE_WEBHOOK_URL:
+        logger.error("❌ OFFLINE_WEBHOOK_URL 未配置")
+        return
+
     try:
-        icon_url = bot.user.avatar.url if bot.user.avatar else bot.user.default_avatar.url
-        
+        # [Debug 修復 #1] 使用 display_avatar 簡化邏輯，確保 100% 有頭貼
+        icon_url = bot.user.display_avatar.url
+
         embed = discord.Embed(
             title="🌸 幽幽子的飄渺呢喃",
             description=content,
             color=color,
             timestamp=datetime.now(timezone.utc)
         )
-        embed.set_footer(
-            text="來自冥界的微風與魂魄之語～",
-            icon_url=icon_url
-        )
-        
-        # 使用 aiohttp 正確發送 Webhook
-        async with aiohttp.ClientSession() as session:
-            webhook = discord.Webhook.from_url(webhook_url, session=session)
+        embed.set_footer(text="來自冥界的微風與魂魄之語～", icon_url=icon_url)
+
+        # [Debug 修復 #2] 關機前直接使用臨時 session 即可，無需檢查 bot.session
+        async with aiohttp.ClientSession() as temp_session:
+            webhook = discord.Webhook.from_url(OFFLINE_WEBHOOK_URL, session=temp_session)
             await webhook.send(embed=embed)
-            logger.info("✅ Webhook 訊息已發送")
-            
+            logger.info("✅ 關機 Webhook 訊息已發送")
+
     except Exception as e:
         logger.error(f"❌ 發送 Webhook 失敗: {e}")
-        raise
 
 
 class ShutdownCog(commands.Cog):
     """
     🌸 幽幽子的安眠指令 🌸
-    讓幽幽子安靜地沉眠,靈魂歸於冥界
+    讓幽幽子安靜地沉眠，靈魂歸於冥界
     """
-    
+
     def __init__(self, bot):
         self.bot = bot
         logger.info("🌸 關機指令已甦醒")
@@ -59,15 +55,12 @@ class ShutdownCog(commands.Cog):
         description="讓幽幽子安靜地沉眠～只有特別的人才能使用"
     )
     async def shutdown(self, ctx: discord.ApplicationContext):
-        """幽幽子的安眠時刻,靈魂歸於寂靜"""
-        
-        # === 權限檢查 ===
         if ctx.user.id != AUTHOR_ID:
             await ctx.respond(
                 embed=discord.Embed(
                     title="🌸 權限不足",
                     description=(
-                        "嘻嘻，只有特別的人才能讓幽幽子安靜下來～\n"
+                        f"嘻嘻，只有特別的人才能讓幽幽子安靜下來～\n"
                         f"你還不是那個人哦，{ctx.user.mention}！\n\n"
                         "櫻花樹下的守護者，不會輕易離去呢～"
                     ),
@@ -80,10 +73,9 @@ class ShutdownCog(commands.Cog):
             return
 
         try:
-            # === 獲取 Bot 頭像 ===
-            icon_url = self.bot.user.avatar.url if self.bot.user.avatar else self.bot.user.default_avatar.url
-            
-            # === 回應關機確認 ===
+            # [Debug 修復 #1] 使用 display_avatar
+            icon_url = self.bot.user.display_avatar.url
+
             shutdown_embed = discord.Embed(
                 title="🌸 幽幽子即將沉眠 🌸",
                 description=(
@@ -99,28 +91,25 @@ class ShutdownCog(commands.Cog):
             shutdown_embed.set_thumbnail(url=icon_url)
             shutdown_embed.set_footer(
                 text=f"由 {ctx.user.name} 啟動關機程序",
-                icon_url=ctx.user.avatar.url if ctx.user.avatar else None
+                icon_url=ctx.user.display_avatar.url  # [Debug 修復 #1]
             )
-            
+
             await ctx.respond(embed=shutdown_embed, ephemeral=False)
             logger.info(f"🌸 {ctx.user.name} 啟動了關機程序")
-            
-            # === 發送 Webhook 通知 ===
-            try:
-                await send_webhook_message(
-                    self.bot,
-                    (
-                        "🔴 **幽幽子飄然離去，魂魄歸於冥界…**\n\n"
-                        "「夜櫻下的安眠，是幽幽子的幸福時刻～」\n\n"
-                        f"關機執行者: {ctx.user.name} (`{ctx.user.id}`)\n"
-                        f"關機時間: <t:{int(datetime.now(timezone.utc).timestamp())}:F>"
-                    ),
-                    discord.Color.from_rgb(205, 133, 232)
-                )
-            except Exception as e:
-                logger.warning(f"⚠️ Webhook 發送失敗，但繼續關機流程: {e}")
-            
-            # === 保存所有數據 ===
+
+            # 1. Webhook 通知
+            await send_webhook_message(
+                self.bot,
+                (
+                    "🔴 **幽幽子飄然離去，魂魄歸於冥界…**\n\n"
+                    "「夜櫻下的安眠，是幽幽子的幸福時刻～」\n\n"
+                    f"關機執行者: {ctx.user.name} (`{ctx.user.id}`)\n"
+                    f"關機時間: <t:{int(datetime.now(timezone.utc).timestamp())}:F>"
+                ),
+                discord.Color.from_rgb(205, 133, 232)
+            )
+
+            # 2. 保存數據
             data_manager = getattr(self.bot, "data_manager", None)
             if data_manager:
                 try:
@@ -128,14 +117,13 @@ class ShutdownCog(commands.Cog):
                     logger.info("💾 所有數據已保存")
                 except Exception as e:
                     logger.error(f"❌ 數據保存失敗: {e}")
-            
-            # === 等待並關閉 Bot ===
-            await asyncio.sleep(3)
-            
+
+            await asyncio.sleep(2)
+
+            # 3. 優雅關閉 Bot (這會自動斷開 Gateway 連線)
             logger.info("🌸 幽幽子即將沉眠，Bot 正在關閉...")
             await self.bot.close()
-            logger.info("✅ Bot 已成功關閉")
-            
+
         except Exception as e:
             logger.error(f"❌ 關機指令執行失敗: {e}", exc_info=True)
             
@@ -151,11 +139,14 @@ class ShutdownCog(commands.Cog):
             )
             error_embed.set_footer(text="幽幽子依然在守護著大家")
             
+            # [Debug 修復 #3] 防止 InteractionResponded 異常
             try:
-                await ctx.respond(embed=error_embed, ephemeral=True)
-            except:
-                # 如果已經 respond 過，使用 send
-                await ctx.send(embed=error_embed)
+                if ctx.response.is_done():
+                    await ctx.followup.send(embed=error_embed, ephemeral=True)
+                else:
+                    await ctx.respond(embed=error_embed, ephemeral=True)
+            except Exception:
+                pass
 
 
 def setup(bot):
