@@ -1,16 +1,16 @@
 {
     "jobs": {
-    "農夫": { "min": 2200, "max": 4300 },
-    "鍛造師": { "min": 3300, "max": 14000 },
-    "厨師": { "min": 1200, "max": 60000 },
-    "地圖師": { "min": 3600, "max": 34000 },
-    "釀造師": { "min": 2500, "max": 73000 },
-    "獵人": { "min": 4500, "max": 10000 },
-    "伐木工": { "min": 2400, "max": 26000 },
-    "礦工": { "min": 2400, "max": 25000 },
-    "消防員": { "min": 5500, "max": 550000 },
-    "IT程序員": { "min": 5600, "max": 8000000 },
-    "賭徒": { "min": 0, "max": 0 }
+        "農夫": { "min": 2200, "max": 4300, "stamina_cost": 2 },
+        "鍛造師": { "min": 3300, "max": 14000, "stamina_cost": 4 },
+        "厨師": { "min": 1200, "max": 60000, "stamina_cost": 3 },
+        "地圖師": { "min": 3600, "max": 34000, "stamina_cost": 2 },
+        "釀造師": { "min": 2500, "max": 73000, "stamina_cost": 3 },
+        "獵人": { "min": 4500, "max": 10000, "stamina_cost": 5 },
+        "伐木工": { "min": 2400, "max": 26000, "stamina_cost": 4 },
+        "礦工": { "min": 2400, "max": 25000, "stamina_cost": 5 },
+        "消防員": { "min": 5500, "max": 550000, "stamina_cost": 6 },
+        "IT程序員": { "min": 5600, "max": 8000000, "stamina_cost": 8 },
+        "賭徒": { "min": 0, "max": 0, "stamina_cost": 0 }
     },
     "fish": [
         {
@@ -661,229 +661,229 @@
         "name": "香烟",
         "price": 20,
         "tax": 2.5,
-        "MP": 5
+        "Stamina": 2
       },
       {
         "name": "台灣啤酒",
         "price": 37,
         "tax": 5.0,
-        "MP": 10
+        "Stamina": 3
       },
       {
         "name": "加大便當",
         "price": 200,
         "tax": 10.5,
-        "MP": 45
+        "Stamina": 11
       },
       {
         "name": "雞肉便當",
         "price": 230,
         "tax": 20.0,
-        "MP": 25
+        "Stamina": 6
       },
       {
         "name": "雙層黑格斯牛肉漢堡",
         "price": 1500,
         "tax": 60.0,
-        "MP": 100
+        "Stamina": 20
       },
       {
         "name": "瘋狂星期四",
         "price": 1000,
         "tax": 15.0,
-        "MP": 80
+        "Stamina": 16
       },
       {
         "name": "經典熱狗",
         "price": 50,
         "tax": 5.0,
-        "MP": 15
+        "Stamina": 4
       },
       {
         "name": "日式拉麵",
         "price": 120,
         "tax": 10.0,
-        "MP": 30
+        "Stamina": 7
       },
       {
         "name": "經典炸雞",
         "price": 150,
         "tax": 15.0, 
-        "MP": 40
+        "Stamina": 9
       },
       {
         "name": "水果塔",
         "price": 200,
         "tax": 20.0,
-        "MP": 20
+        "Stamina": 5
       },
       {
         "name": "經典薯條",
         "price": 50,
         "tax": 5.0,
-        "MP": 10
+        "Stamina": 3
       },
       {
         "name": "大雜燴",
         "price": 1300,
         "tax": 23.0,
-        "MP": 55
+        "Stamina": 13
       },
       {
         "name": "俱滅煞鍋",
         "price": 175000,
         "tax": 1000.0,
-        "MP": 100
+        "Stamina": 20
       },
       {
         "name": "櫻花靈團子",
         "price": 80,
         "tax": 8.0,
-        "MP": 25
+        "Stamina": 6
       },
       {
         "name": "幽冥梅酒",
         "price": 300,
         "tax": 15.0,
-        "MP": 50
+        "Stamina": 12
       },
       {
         "name": "彼岸花茶",
         "price": 120,
         "tax": 10.0,
-        "MP": 30
+        "Stamina": 7
       },
       {
         "name": "魂魄壽司",
         "price": 250,
         "tax": 20.0,
-        "MP": 40
+        "Stamina": 9
       },
       {
         "name": "冥界月餅",
         "price": 200,
         "tax": 18.0,
-        "MP": 35
+        "Stamina": 8
       },
       {
         "name": "幽魂桃花羹",
         "price": 150,
         "tax": 12.0,
-        "MP": 30
+        "Stamina": 7
       },
       {
         "name": "冥柚靈霜",
         "price": 180,
         "tax": 15.0,
-        "MP": 35
+        "Stamina": 8
       },
       {
         "name": "蓮霧魂露",
         "price": 100,
         "tax": 8.0,
-        "MP": 25
+        "Stamina": 6
       },
       {
         "name": "枇杷幽膏",
         "price": 220,
         "tax": 18.0,
-        "MP": 40
+        "Stamina": 9
       },
       {
         "name": "荔枝鬼珠",
         "price": 250,
         "tax": 20.0,
-        "MP": 45
+        "Stamina": 11
       },
       {
         "name": "蜜漬柿餅",
         "price": 90,
         "tax": 8.0,
-        "MP": 20
+        "Stamina": 5
       },
       {
         "name": "芒果冰沙",
         "price": 110,
         "tax": 10.0,
-        "MP": 25
+        "Stamina": 6
       },
       {
         "name": "龍眼蜜茶",
         "price": 80,
         "tax": 7.0,
-        "MP": 15
+        "Stamina": 4
       },
       {
         "name": "鳳梨酥",
         "price": 150,
         "tax": 12.0,
-        "MP": 30
+        "Stamina": 7
       },
       {
         "name": "鮮橙果盤",
         "price": 200,
         "tax": 15.0,
-        "MP": 35
+        "Stamina": 8
       },
       {
         "name": "桂圓紅棗湯",
         "price": 100,
         "tax": 8.0,
-        "MP": 20
+        "Stamina": 5
       },
       {
         "name": "芭樂切盤",
         "price": 120,
         "tax": 10.0,
-        "MP": 25
+        "Stamina": 6
       },
       {
         "name": "楊梅果汁",
         "price": 90,
         "tax": 7.5,
-        "MP": 15
+        "Stamina": 4
       },
       {
         "name": "椰棗奶昔",
         "price": 160,
         "tax": 12.5,
-        "MP": 30
+        "Stamina": 7
       },
       {
         "name": "水蜜桃果凍",
         "price": 180,
         "tax": 14.0,
-        "MP": 35
+        "Stamina": 8
       },
       {
         "name": "靈夢的博麗茶泡飯",
         "price": 150,
         "tax": 12.0,
-        "MP": 35
+        "Stamina": 8
       },
       {
         "name": "魔理沙的魔法菇燴飯",
         "price": 180,
         "tax": 14.0,
-        "MP": 40
+        "Stamina": 9
       },
       {
         "name": "咲夜的紅茶牛肉丼",
         "price": 220,
         "tax": 18.0,
-        "MP": 50
+        "Stamina": 12
       },
       {
         "name": "愛麗絲的布偶便當",
         "price": 200,
         "tax": 16.0,
-        "MP": 45
+        "Stamina": 11
       },
       {
         "name": "妖夢的半靈燒鯖魚定食",
         "price": 190,
         "tax": 15.0,
-        "MP": 42
+        "Stamina": 10
       }
     ]
   }
