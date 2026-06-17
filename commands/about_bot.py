@@ -1,16 +1,19 @@
 import discord
 from discord.ext import commands
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import random
 import logging
 import time
 
 logger = logging.getLogger("SakuraBot.commands.about_bot")
 
+# UTC+8 時區（與整個 Bot 保持一致）
+LOCAL_TIMEZONE = timezone(timedelta(hours=8))
+
 
 class SakuraWhisper(commands.Cog):
     """幽幽子以櫻花瓣訴說她的靈魂故事"""
-    
+
     def __init__(self, bot: discord.Bot):
         self.bot = bot
         self.yuyuko_quotes = [
@@ -22,7 +25,7 @@ class SakuraWhisper(commands.Cog):
             "生與死，如櫻花綻放與凋零。",
             "啊啊～又是悠閒的一天♪"
         ]
-    
+
     @discord.slash_command(
         name="about-me",
         description="關於幽幽子的一切，隨櫻花瓣飄落～"
@@ -35,15 +38,11 @@ class SakuraWhisper(commands.Cog):
                 ephemeral=True
             )
             return
-        
-        # 計算幽幽子的運行時間
+
         uptime_seconds = time.time() - getattr(self.bot, "start_time", time.time())
         uptime_str = self._format_uptime(uptime_seconds)
-        
-        # 根據時辰選擇幽幽子的問候
         greeting = self._get_greeting()
-        
-        # 構築幽幽子的靈魂畫像
+
         embed = discord.Embed(
             title="🌸 西行寺幽幽子的呢喃",
             description=(
@@ -52,15 +51,16 @@ class SakuraWhisper(commands.Cog):
                 "> *來吧，與我共舞於 `/` 指令之間，探索生死的奧秘～*\n\n"
                 "若迷失於冥界，不妨呼喚 `/help`，我將輕聲指引。"
             ),
-            color=discord.Color.from_rgb(255, 182, 193),  # 櫻花粉
-            timestamp=datetime.now()
+            color=discord.Color.from_rgb(255, 182, 193),
+            timestamp=datetime.now(timezone.utc)
         )
-        
-        # 添加幽幽子的頭像
-        if self.bot.user.avatar:
-            embed.set_thumbnail(url=self.bot.user.display_avatar.url)
-        
-        # 幽幽子的基本資訊
+
+        # [Debug 修復 #2] 改用 display_avatar，自動處理無頭像的情況，永遠不會回傳 None
+        embed.set_thumbnail(url=self.bot.user.display_avatar.url)
+
+        # [Debug 修復 #1] 加上 `or 0` 防呆，避免 Discord API 回傳 None 導致 sum() 崩潰
+        total_users = sum((g.member_count or 0) for g in self.bot.guilds)
+
         embed.add_field(
             name="👻 幽幽子的秘密",
             value=(
@@ -70,13 +70,12 @@ class SakuraWhisper(commands.Cog):
                 f"存在形式: Python + Pycord\n"
                 f"已甦醒時長: {uptime_str}\n"
                 f"守護的花園: {len(self.bot.guilds)} 個伺服器\n"
-                f"感知的靈魂: {sum(g.member_count for g in self.bot.guilds)} 位\n"
+                f"感知的靈魂: {total_users} 位\n"
                 f"```"
             ),
             inline=False
         )
-        
-        # 召喚者的契約
+
         embed.add_field(
             name="🖌️ 喚醒幽幽之人",
             value=(
@@ -86,8 +85,7 @@ class SakuraWhisper(commands.Cog):
             ),
             inline=False
         )
-        
-        # 幽幽子的能力
+
         embed.add_field(
             name="✨ 幽幽子的能力",
             value=(
@@ -99,19 +97,16 @@ class SakuraWhisper(commands.Cog):
             ),
             inline=False
         )
-        
-        # 隨機挑選幽幽子的呢喃
+
         embed.set_footer(
             text=f"💭 {random.choice(self.yuyuko_quotes)}",
-            icon_url=self.bot.user.avatar.url if self.bot.user.avatar else None
+            # [Debug 修復 #2] 同樣改用 display_avatar
+            icon_url=self.bot.user.display_avatar.url
         )
-        
-        # 添加裝飾圖片 (可選)
-        # embed.set_image(url="https://example.com/yuyuko_banner.png")
-        
+
         await ctx.respond(embed=embed)
         logger.info(f"{ctx.author} ({ctx.author.id}) 查看了 about-me")
-    
+
     @discord.slash_command(
         name="stats",
         description="查看幽幽子的靈魂統計數據"
@@ -121,52 +116,49 @@ class SakuraWhisper(commands.Cog):
         if not self.bot.user:
             await ctx.respond("統計數據迷失於冥界...", ephemeral=True)
             return
-        
-        # 計算運行時間
+
         uptime_seconds = time.time() - getattr(self.bot, "start_time", time.time())
         uptime_str = self._format_uptime(uptime_seconds)
-        
-        # 計算延遲
         latency_ms = round(self.bot.latency * 1000, 2)
-        
-        # 獲取統計數據
+
         total_guilds = len(self.bot.guilds)
-        total_users = sum(g.member_count for g in self.bot.guilds)
-        total_channels = sum(len(g.channels) for g in self.bot.guilds)
         
-        # 獲取斷線統計 (如果有的話)
+        # [Debug 修復 #1] 加上 `or 0` 防呆
+        total_users = sum((g.member_count or 0) for g in self.bot.guilds)
+        total_channels = sum(len(g.channels) for g in self.bot.guilds)
+
+        # 讀取今日斷線數據 (與 disconnect.py 完美串接)
         disconnect_count = 0
         reconnect_count = 0
         if hasattr(self.bot, 'data_manager'):
-            bot_status = self.bot.data_manager.bot_status
-            disconnect_count = bot_status.get("disconnect_count", 0)
-            reconnect_count = bot_status.get("reconnect_count", 0)
-        
+            history = self.bot.data_manager.bot_status.get("history", {})
+            today = datetime.now(LOCAL_TIMEZONE).strftime("%Y-%m-%d")
+            today_data = history.get(today, {})
+            disconnect_count = today_data.get("disconnect", 0)
+            reconnect_count = today_data.get("reconnect", 0)
+
         embed = discord.Embed(
             title="📊 幽幽子的靈魂數據",
             description="冥界的記憶與統計",
-            color=discord.Color.from_rgb(138, 43, 226),  # 紫色
-            timestamp=datetime.now()
+            color=discord.Color.from_rgb(138, 43, 226),
+            timestamp=datetime.now(timezone.utc)
         )
-        
-        if self.bot.user.avatar:
-            embed.set_thumbnail(url=self.bot.user.display_avatar.url)
-        
-        # 運行狀態
+
+        embed.set_thumbnail(url=self.bot.user.display_avatar.url)
+
         embed.add_field(
             name="⚡ 運行狀態",
             value=(
                 f"```yaml\n"
                 f"運行時長: {uptime_str}\n"
                 f"延遲: {latency_ms} ms\n"
-                f"斷線次數: {disconnect_count}\n"
-                f"重連次數: {reconnect_count}\n"
+                f"今日斷線: {disconnect_count} 次\n"
+                f"今日重連: {reconnect_count} 次\n"
                 f"```"
             ),
             inline=True
         )
-        
-        # 伺服器統計
+
         embed.add_field(
             name="🏰 守護範圍",
             value=(
@@ -178,8 +170,7 @@ class SakuraWhisper(commands.Cog):
             ),
             inline=True
         )
-        
-        # 系統資訊
+
         embed.add_field(
             name="🖥️ 靈魂構成",
             value=(
@@ -191,12 +182,11 @@ class SakuraWhisper(commands.Cog):
             ),
             inline=True
         )
-        
+
         embed.set_footer(text="數據實時更新中...")
-        
+
         await ctx.respond(embed=embed)
         logger.info(f"{ctx.author} ({ctx.author.id}) 查看了統計數據")
-    
 
     def _format_uptime(self, seconds: float) -> str:
         """格式化運行時間"""
@@ -204,7 +194,7 @@ class SakuraWhisper(commands.Cog):
         hours = int((seconds % 86400) // 3600)
         minutes = int((seconds % 3600) // 60)
         secs = int(seconds % 60)
-        
+
         parts = []
         if days > 0:
             parts.append(f"{days}天")
@@ -214,13 +204,13 @@ class SakuraWhisper(commands.Cog):
             parts.append(f"{minutes}分鐘")
         if secs > 0 or not parts:
             parts.append(f"{secs}秒")
-        
+
         return " ".join(parts)
-    
+
     def _get_greeting(self) -> str:
         """根據時間獲取問候語"""
-        current_hour = datetime.now().hour
-        
+        current_hour = datetime.now(LOCAL_TIMEZONE).hour
+
         greetings = {
             (5, 8): "清晨的櫻花初綻，露珠輕顫",
             (8, 12): "晨光灑落白玉樓，靈魂甦醒",
@@ -230,11 +220,16 @@ class SakuraWhisper(commands.Cog):
             (20, 23): "夜幕低垂，亡魂低語徘徊",
             (23, 5): "深夜的冥界寂靜，唯有櫻花作伴"
         }
-        
+
         for (start, end), greeting in greetings.items():
-            if start <= current_hour < end or (start > end and (current_hour >= start or current_hour < end)):
-                return greeting
-        
+            if start <= end:
+                if start <= current_hour < end:
+                    return greeting
+            else:
+                # 跨午夜時段，例如 (23, 5)
+                if current_hour >= start or current_hour < end:
+                    return greeting
+
         return "櫻花飄落的時刻"
 
 
