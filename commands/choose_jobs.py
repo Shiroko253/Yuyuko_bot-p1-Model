@@ -3,208 +3,209 @@ from discord.ext import commands
 import logging
 import asyncio
 import os
-from typing import Dict, Any
 
 logger = logging.getLogger("SakuraBot.commands.choose_jobs")
+# [Debug 修復] 引入專門的 Commands 錯誤日誌記錄器
+commands_error_logger = logging.getLogger("SakuraBot.CommandsError")
 
 
 class ChooseJob(commands.Cog):
-    """
-    ✿ 冥界職業祭典 ✿
-    幽幽子邀你在櫻花樹下選擇屬於你的靈魂工作～
-    """
+    """✿ 冥界職業祭典 ✿"""
     def __init__(self, bot: discord.Bot):
         self.bot = bot
 
     @discord.slash_command(name="choose_job", description="幽幽子邀你選擇靈魂的工作～")
     async def choose_job(self, ctx: discord.ApplicationContext):
-        guild_id = str(ctx.guild.id)
-        user_id = str(ctx.user.id)
-        data_manager = self.bot.data_manager
-
-        # [Debug 修復 #3] 加入在線備份攔截
-        if not await data_manager.check_backup_status(ctx, "choose_job"):
-            return
-
-        # [Debug 修復 #1] 直接讀取記憶體中的 user_config，不再讀取硬碟 YAML
-        user_config = data_manager.user_config
-
-        # [Debug 修復 #2] 使用 asyncio.to_thread 讀取靜態設定檔，避免阻塞 Event Loop
-        config_path = os.path.join(data_manager.config_dir, "config.json")
-        config_data = await asyncio.to_thread(data_manager._load_json, config_path, {})
-
-        jobs_list = config_data.get("jobs", [])
-        if isinstance(jobs_list, list) and len(jobs_list) > 0:
-            jobs_data = jobs_list[0]
-        elif isinstance(jobs_list, dict):
-            jobs_data = jobs_list
-        else:
-            jobs_data = {}
-
-        # 檢查是否已有職業 (直接讀取記憶體)
-        if guild_id in user_config and user_id in user_config[guild_id]:
-            current_job = user_config[guild_id][user_id].get("job")
-            if current_job:
-                await ctx.respond(embed=discord.Embed(
-                    title="🌸 冥界職業已選定～",
-                    description=(
-                        f"你的靈魂已在冥界簽約，當前職業是 **{current_job}**。\n"
-                        "想要轉換靈魂工作嗎？請悄悄找幽幽子或管理員～"
-                    ),
-                    color=discord.Color.blue()
-                ).set_footer(text="幽幽子祝你工作順利，賞櫻愉快～"), ephemeral=True)
+        try:
+            if not await self.bot.data_manager.check_backup_status(ctx, "choose_job"):
                 return
 
-        if not isinstance(jobs_data, dict) or not jobs_data:
-            await ctx.respond(embed=discord.Embed(
-                title="🌸 冥界混沌～",
-                description="職業數據尚未正確配置，幽幽子也迷糊了！請快去找管理員賞櫻解惑～",
-                color=discord.Color.red()
-            ), ephemeral=True)
-            return
+            guild_id = str(ctx.guild.id)
+            user_id = str(ctx.user.id)
+            user_config = self.bot.data_manager.user_config
 
-        class JobSelect(discord.ui.Select):
-            def __init__(self_inner, parent_view):
-                self_inner.parent_view = parent_view
-
-                # 計算當前 IT 程序員人數 (直接讀取記憶體)
-                it_count = sum(
-                    1 for u_info in user_config.get(guild_id, {}).values()
-                    if isinstance(u_info, dict) and u_info.get("job") == "IT程序員"
-                )
-                
-                options = []
-                for job, data in jobs_data.items():
-                    if not isinstance(data, dict) or "min" not in data or "max" not in data:
-                        continue
-                    if job == "IT程序員" and it_count >= 2:
-                        options.append(discord.SelectOption(
-                            label=f"   {job}   ",
-                            description=f"{data['min']}-{data['max']}幽靈幣（已滿員）",
-                            value=f"{job}_disabled", emoji="❌"
-                        ))
-                    else:
-                        options.append(discord.SelectOption(
-                            label=f"   {job}   ",
-                            description=f"{data['min']}-{data['max']}幽靈幣",
-                            value=job, emoji="🌸"
-                        ))
-                super().__init__(
-                    placeholder="請選擇你的靈魂工作～",
-                    options=options[:25], min_values=1, max_values=1
-                )
-
-            async def callback(self_inner, interaction: discord.Interaction):
-                if interaction.user.id != ctx.user.id:
-                    await interaction.response.send_message("這不是你的冥界工作選擇喲～", ephemeral=True)
-                    return
-
-                chosen_job = self_inner.values[0]
-                if "_disabled" in chosen_job:
-                    await interaction.response.send_message("此職業已滿員，請選其他工作吧！", ephemeral=True)
-                    return
-
-                # [Debug 修復 #1] 直接修改記憶體中的 user_config
-                if guild_id not in user_config:
-                    user_config[guild_id] = {}
-                
-                # [Debug 修復 #1] IT程序員人數限制：在修改前再次驗證記憶體中的數據，防止併發超員
-                if chosen_job == "IT程序員":
-                    it_count_now = sum(
-                        1 for u_info in user_config.get(guild_id, {}).values()
-                        if isinstance(u_info, dict) and u_info.get("job") == "IT程序員"
-                    )
-                    if it_count_now >= 2:
-                        await interaction.response.send_message(
-                            "很遺憾，IT程序員已在你選擇的瞬間被搶先一步，請選擇其他職業！", 
-                            ephemeral=True
-                        )
-                        return
-
-                # 寫入記憶體
-                user_config[guild_id][user_id] = {"job": chosen_job, "work_cooldown": None}
-
-                # [Debug 修復 #1] 使用統一的 save_all_async 保存，受 save_lock 保護
-                try:
-                    await data_manager.save_all_async()
-                except Exception as e:
-                    logger.exception(f"儲存職業資料失敗 {user_id}: {e}")
-                    await interaction.response.send_message(embed=discord.Embed(
-                        title="🌸 櫻花飄散，資料儲存失敗～",
-                        description="儲存職業資料時遇到靈魂迷宮，請找管理員或幽幽子！",
-                        color=discord.Color.red()
-                    ), ephemeral=True)
-                    return
-
-                # 成功後的 UI 更新
-                if chosen_job == "賭徒":
-                    embed = discord.Embed(
-                        title="🃏 靈魂簽約成功！賭徒之契約～",
-                        description=(
-                            "你已選擇 **賭徒**，從今以後與幽幽子共舞於生死邊緣！\n"
-                            "在 21 點遊戲中，你的賠率將提升至 **3 倍**！\n"
-                            "但記住：賭博有風險，櫻花亦無常～"
-                        ),
-                        color=discord.Color.dark_red()
-                    ).set_footer(text="命運之輪，由你轉動...")
-                else:
-                    embed = discord.Embed(
-                        title="🌸 靈魂簽約成功！～",
-                        description=(
-                            f"你已選擇 **{chosen_job}**，"
-                            f"從今以後成為冥界櫻花園的 {chosen_job}！\n"
-                            "幽幽子祝你靈魂工作愉快，每天都有好吃的～"
-                        ),
-                        color=discord.Color.green()
-                    ).set_footer(text="櫻花飄落，萬物皆美好～")
-
-                for child in self_inner.parent_view.children:
-                    child.disabled = True
-                self_inner.parent_view.stop()
-                await interaction.response.edit_message(embed=embed, view=self_inner.parent_view)
-
-        class JobView(discord.ui.View):
-            def __init__(self_inner, cog):
-                super().__init__(timeout=60)
-                self_inner.cog = cog
-                self_inner.message = None
-                self_inner.add_item(JobSelect(self_inner))
-
-            async def on_timeout(self_inner):
-                for child in self_inner.children:
-                    child.disabled = True
-                embed = discord.Embed(
-                    title="🌸 選擇超時，櫻花落盡～",
-                    description="冥界櫻花已謝，請重新使用指令再來選擇靈魂工作吧！",
-                    color=discord.Color.orange()
-                ).set_footer(text="幽幽子靜候你的再次選擇")
-                try:
-                    # [Debug 修復 #2] 現在 self_inner.message 是真正的 Message 物件，edit 可以正常運作
-                    if self_inner.message:
-                        await self_inner.message.edit(embed=embed, view=self_inner)
-                except Exception as e:
-                    logger.exception(f"Timeout 訊息更新失敗 {ctx.user.id}: {e}")
-
-        try:
-            view = JobView(self)
-            embed = discord.Embed(
-                title="🌸 冥界職業祭典開啟～",
-                description="幽幽子在櫻花樹下等待你的靈魂選擇！\n請從下方選擇你的靈魂工作：",
-                color=discord.Color.blurple()
-            ).set_footer(text="每個職業收入不同，櫻花舞者各有命運")
+            config_path = os.path.join(self.bot.data_manager.config_dir, "config.json")
+            config_data = await asyncio.to_thread(self.bot.data_manager._load_json, config_path, {})
             
-            response = await ctx.respond(embed=embed, view=view)
-            # [Debug 修復 #2] 必須使用 original_response() 獲取真正的 Message 物件
+            jobs_list = config_data.get("jobs", [])
+            jobs_data = jobs_list[0] if isinstance(jobs_list, list) and jobs_list else jobs_list if isinstance(jobs_list, dict) else {}
+
+            if not isinstance(jobs_data, dict) or not jobs_data:
+                await ctx.respond("職業數據尚未正確配置！", ephemeral=True)
+                return
+
+            # 獲取當前職業狀態
+            user_info = user_config.get(guild_id, {}).get(user_id, {})
+            current_job = user_info.get("job")
+            current_sub_job = user_info.get("sub_job")
+
+            # 計算 IT 程序員人數 (僅計算正職)
+            it_count = sum(1 for u_info in user_config.get(guild_id, {}).values() if isinstance(u_info, dict) and u_info.get("job") == "IT程序員")
+
+            options = []
+            for job, data in jobs_data.items():
+                if not isinstance(data, dict) or "min" not in data: continue
+                
+                # 定義被動描述
+                passive_desc = ""
+                if job == "賭徒": passive_desc = "【被動：賭徒的決定】下注x3/勝x6"
+                elif job == "漁夫": passive_desc = "【被動：漁民的直覺】稀有漁獲機率提升"
+                elif job == "釣魚佬": passive_desc = "【被動：釣魚佬的直覺】30%空軍率"
+                
+                desc = f"薪資: {data['min']}-{data['max']}\n{passive_desc}" if passive_desc else f"薪資: {data['min']}-{data['max']}"
+                
+                if job == "IT程序員" and it_count >= 2:
+                    options.append(discord.SelectOption(label=f"{job} (正職)", description="已滿員", value=f"{job}_disabled", emoji="❌"))
+                else:
+                    suffix = " [副職]" if job == "釣魚佬" else " [正職]"
+                    options.append(discord.SelectOption(label=f"{job}{suffix}", description=desc, value=job, emoji="🌸"))
+
+            class JobSelect(discord.ui.Select):
+                def __init__(self_inner, parent_view):
+                    self_inner.parent_view = parent_view
+                    super().__init__(placeholder="請選擇你的靈魂工作～", options=options[:25], min_values=1, max_values=1)
+
+                async def callback(self_inner, interaction: discord.Interaction):
+                    # [Debug 修復] 為 callback 加入 try-except，防止 Interaction 卡死
+                    try:
+                        if interaction.user.id != ctx.user.id:
+                            await interaction.response.send_message("這不是你的冥界工作選擇喲～", ephemeral=True)
+                            return
+
+                        chosen_job = self_inner.values[0]
+                        if "_disabled" in chosen_job:
+                            await interaction.response.send_message("IT程序員已滿員，請選其他工作吧！", ephemeral=True)
+                            return
+
+                        # 確保數據結構存在
+                        user_config.setdefault(guild_id, {}).setdefault(user_id, {})
+                        u_info = user_config[guild_id][user_id]
+
+                        # --- 核心邏輯：區分正職與副職，並處理互斥 ---
+                        if chosen_job == "釣魚佬":
+                            # 釣魚佬是副職
+                            if not current_job:
+                                await interaction.response.send_message("哎呀～你還沒有正職呢！請先選擇一個正常職業，才能成為釣魚佬哦！", ephemeral=True)
+                                return
+                            if current_job == "賭徒":
+                                await interaction.response.send_message("賭徒的命運只在賭桌，無法成為釣魚佬副職哦！", ephemeral=True)
+                                return
+                            
+                            # [新增互斥] 漁夫與釣魚佬衝突
+                            if current_job == "漁夫":
+                                await interaction.response.send_message(
+                                    "哎呀～漁夫可是要駕駛小船出海捕魚的專業人士呢！\n"
+                                    "每天在海上搏鬥狂風巨浪，怎麼有時間在岸邊悠閒地當釣魚佬呢？\n"
+                                    "這兩者的生活方式可是完全衝突的哦～", ephemeral=True
+                                )
+                                return
+                            
+                            u_info["sub_job"] = "釣魚佬"
+                            msg = f"你已將 **釣魚佬** 設為副職！\n你的正職依然是 **{current_job}**。\n*釣魚佬會在釣魚時觸發特殊被動哦～*"
+                            color = discord.Color.blue()
+                        else:
+                            # 選擇的是正職
+                            if current_job and current_job != chosen_job:
+                                await interaction.response.send_message(f"你已經擁有正職 **{current_job}** 了！\n如果想更換正職，請先使用 `/reset_job` 放棄現有身份。", ephemeral=True)
+                                return
+                            
+                            # [新增互斥] 漁夫與釣魚佬衝突
+                            if chosen_job == "漁夫" and current_sub_job == "釣魚佬":
+                                await interaction.response.send_message(
+                                    "你已經是享受悠閒垂釣的釣魚佬了，怎麼能去當每天出海吹風的漁夫呢？\n"
+                                    "快放下漁網，繼續享受岸邊的微風吧～\n"
+                                    "(若想成為漁夫，請先使用 `/reset_job` 清除副職)", ephemeral=True
+                                )
+                                return
+
+                            u_info["job"] = chosen_job
+                            u_info.pop("sub_job", None) # 更換正職時，自動清除副職
+                            msg = f"你已選擇 **{chosen_job}** 作為你的正職！"
+                            color = discord.Color.green()
+
+                        await self.bot.data_manager.save_all_async()
+
+                        embed = discord.Embed(title="🌸 靈魂簽約成功！～", description=msg, color=color)
+                        embed.set_footer(text="櫻花飄落，萬物皆美好～")
+
+                        for child in self_inner.parent_view.children: child.disabled = True
+                        self_inner.parent_view.stop()
+                        await interaction.response.edit_message(embed=embed, view=self_inner.parent_view)
+                        
+                    except Exception as e:
+                        logger.error(f"JobSelect callback 發生錯誤: {e}", exc_info=True)
+                        try:
+                            error_msg = "❌ 選擇職業時發生未知錯誤，請使用 `/feedback` 回報！"
+                            if not interaction.response.is_done():
+                                await interaction.response.send_message(error_msg, ephemeral=True)
+                            else:
+                                await interaction.followup.send(error_msg, ephemeral=True)
+                        except Exception as e2:
+                            # [Debug 修復] 記錄發送錯誤訊息失敗的錯誤
+                            commands_error_logger.error(
+                                f"JobSelect: 發送錯誤訊息失敗 - 原始錯誤: {e}, 發送錯誤: {e2}", 
+                                exc_info=True
+                            )
+
+            class JobView(discord.ui.View):
+                def __init__(self_inner, cog):
+                    super().__init__(timeout=60)
+                    self_inner.cog = cog
+                    self_inner.message = None
+                    self_inner.add_item(JobSelect(self_inner))
+
+                async def on_timeout(self_inner):
+                    for child in self_inner.children: child.disabled = True
+                    if self_inner.message:
+                        try: 
+                            await self_inner.message.edit(view=self_inner)
+                        except discord.NotFound:
+                            pass
+                        except Exception as e:
+                            # [Debug 修復] 記錄超時編輯失敗的錯誤
+                            commands_error_logger.error(f"JobView on_timeout 編輯訊息失敗: {e}", exc_info=True)
+
+            # 顯示當前狀態提示
+            status_desc = "你目前是一張白紙，快來選擇你的正職吧！"
+            if current_job:
+                status_desc = f"你目前的正職是 **{current_job}**"
+                if current_sub_job:
+                    status_desc += f"，副職是 **{current_sub_job}**"
+                status_desc += "。\n(選擇正職需先重置，選擇副職則直接覆蓋)"
+
+            view = JobView(self)
+            embed = discord.Embed(title="🌸 冥界職業祭典開啟～", description=f"{status_desc}\n\n請從下方選擇：", color=discord.Color.blurple())
+            embed.set_footer(text="正職決定薪資，副職決定釣魚被動！")
+            
+            response = await ctx.respond(embed=embed, view=view, ephemeral=True)
             view.message = await response.original_response()
+
         except Exception as e:
-            logger.exception(f"發送職業選擇訊息失敗 {user_id}: {e}")
-            await ctx.respond(embed=discord.Embed(
-                title="🌸 冥界混沌，無法開啟職業選擇～",
-                description="無法發送職業選擇訊息，幽幽子也迷糊了！請稍後再試～",
-                color=discord.Color.red()
-            ), ephemeral=True)
+            # [Debug 修復] 為整個指令加入外層 try-except 防崩潰
+            logger.error(f"choose_job 指令發生錯誤: {e}", exc_info=True)
+            try:
+                error_embed = discord.Embed(
+                    title="❌ 職業祭典發生錯誤",
+                    description=(
+                        "嗚嗚...幽幽子在準備祭典時迷路了...\n"
+                        "請稍後再試一次 `/choose_job`。\n\n"
+                        "**如果反覆出現，請使用 `/feedback` 回報！**"
+                    ),
+                    color=discord.Color.dark_red()
+                ).set_footer(text="請回報錯誤 · 幽幽子")
+                
+                if not ctx.response.is_done():
+                    await ctx.respond(embed=error_embed, ephemeral=True)
+                else:
+                    await ctx.followup.send(embed=error_embed, ephemeral=True)
+            except Exception as e2:
+                commands_error_logger.error(
+                    f"choose_job: 發送錯誤訊息失敗 - 原始錯誤: {e}, 發送錯誤: {e2}", 
+                    exc_info=True
+                )
 
 
 def setup(bot: discord.Bot):
     bot.add_cog(ChooseJob(bot))
-    logger.info("ChooseJob Cog loaded successfully")
+    # [修復] 加入符合幽幽子風格的載入日誌
+    logger.info("🌸 冥界職業祭典系統已於櫻花樹下甦醒")
