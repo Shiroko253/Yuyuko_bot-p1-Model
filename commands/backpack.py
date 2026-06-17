@@ -6,6 +6,8 @@ import asyncio
 import os
 
 logger = logging.getLogger("SakuraBot.commands.backpack")
+# [Debug 修復] 引入專門的 Commands 錯誤日誌記錄器
+commands_error_logger = logging.getLogger("SakuraBot.CommandsError")
 
 
 class BackpackView(View):
@@ -25,8 +27,12 @@ class BackpackView(View):
                     content="⏰ 背包已超時關閉，請重新使用 `/backpack`。",
                     view=self
                 )
-            except Exception:
+            except discord.NotFound:
+                # 訊息被用戶刪除是正常的，直接忽略
                 pass
+            except Exception as e:
+                # [Debug 修復] 記錄其他導致超時編輯失敗的嚴重錯誤
+                commands_error_logger.error(f"BackpackView on_timeout 編輯訊息失敗: {e}", exc_info=True)
 
 
 class ActionView(View):
@@ -45,8 +51,12 @@ class ActionView(View):
                     content="⏰ 操作已超時，請重新使用 `/backpack`。",
                     view=self
                 )
-            except Exception:
+            except discord.NotFound:
+                # 訊息被用戶刪除是正常的，直接忽略
                 pass
+            except Exception as e:
+                # [Debug 修復] 記錄其他導致超時編輯失敗的嚴重錯誤
+                commands_error_logger.error(f"ActionView on_timeout 編輯訊息失敗: {e}", exc_info=True)
 
 
 class Backpack(commands.Cog):
@@ -286,4 +296,5 @@ class Backpack(commands.Cog):
 def setup(bot: discord.Bot):
     """將幽幽子的背包功能裝進 bot 裡"""
     bot.add_cog(Backpack(bot))
-    logger.info("背包系統已載入")
+    # [修復] 將生硬的日誌改為符合幽幽子風格的冥界語氣
+    logger.info("🎒 幽幽子的背包小空間已於櫻花樹下展開")
