@@ -11,9 +11,9 @@
 <hr>
 
 <!-- 
-  [開發者注意] 原本的 Giphy 連結是壞掉的，我暫時用 Emoji 和文字排版代替。
-  如果您有喜歡的幽幽子 GIF，請將下方替換為：
-  <img src="您的_GIF_連結.gif" alt="Yuyuko Sleeping" width="200">
+  [Developer Note] The original Giphy link was broken. 
+  If you have a favorite Yuyuko GIF, replace the line below with:
+  <img src="YOUR_GIF_LINK.gif" alt="Yuyuko Sleeping" width="200">
 -->
 <h1>🌸 Yuyuko Bot 🌸</h1>
 <p><em>"Zzz... Hm? You need something? Make it quick, I was dreaming about dango..."</em></p>
@@ -28,6 +28,28 @@ Thank you for inviting her to your server. Please try not to wake her up unneces
 </div>
 
 ---
+
+# 📚 Official Wiki & Guides
+
+Want to dive deep into Yuyuko Bot's systems? Check out our official documentation and become a Netherworld pro!
+
+<div align="center">
+
+| 📖 Document | 📝 Description | 🔗 Quick Link |
+| :--- | :--- | :---: |
+| 💼 **Job Guide** | Main/Sub job system, salary ranges, stamina costs, 3 passive skills, and mutual exclusion rules | [👉 Read Now](jobs.en.md) |
+| 🎣 **Fishing Encyclopedia** | Fishing scenarios, drop rates, and a complete guide to 100+ fish species with Fisherman/Angler bonuses | [👉 Read Now](fish.en.md) |
+| 🍡 **Shop & Stamina Guide** | Stamina system, full list of 39 items, taxed prices, value analysis, and Touhou collab meals | [👉 Read Now](shop_item.en.md) |
+
+</div>
+
+> 💡 **Shiroko's Reading Advice**:
+> If this is your first time with Yuyuko Bot, start with the **《Job Guide》** to pick a suitable career,
+> then check the **《Shop & Stamina Guide》** to learn how to recover stamina,
+> and finally challenge the legendary leviathans in the **《Fishing Encyclopedia》**!
+
+---
+
 
 ## 💤 Current Status & Architecture
 
@@ -101,7 +123,7 @@ If you are a developer, here is what keeps her soul intact:
 
 ### 🎣 Fishing (Is there food?)
 
-> **Passives:** Fisher (Main) boosts rare catches. Angler (Sub) has a 30% "Empty-handed" rate but finds big treasures.
+> **Passives:** Fisherman (Main) boosts rare catches. Angler (Sub) has a 30% "Skunked" rate but finds big treasures.
 
 | Command | Description | Usage |
 | :--- | :--- | :--- |
