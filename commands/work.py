@@ -41,7 +41,7 @@ class Work(commands.Cog):
             if not await self.data_manager.check_backup_status(ctx, "work"):
                 return
 
-            await ctx.defer(ephemeral=True)
+            await ctx.defer(ephemeral=False)
 
             if ctx.guild is None:
                 await ctx.respond(
@@ -89,6 +89,19 @@ class Work(commands.Cog):
                         description=random.choice(GAMBLER_QUOTES),
                         color=discord.Color.red()
                     ).set_footer(text="幽幽子：賭徒無法透過工作賺取幽靈幣，只能靠命運！"),
+                    ephemeral=False
+                )
+                return
+            
+            job_name = user_info.get("job")
+            
+            if not job_name or job_name == "釣魚佬":
+                await ctx.respond(
+                    embed=discord.Embed(
+                        title="🌸 無法工作",
+                        description="幽幽子：你沒有正職，或者正職資料異常！\n釣魚佬只是副職，請先用 `/choose_job` 選擇一個正常職業來工作吧！",
+                        color=discord.Color.red()
+                    ),
                     ephemeral=True
                 )
                 return
@@ -153,7 +166,7 @@ class Work(commands.Cog):
                             description=f"幽幽子：你還需等待 {minutes} 分鐘 {seconds} 秒才能再次工作！",
                             color=discord.Color.orange()
                         ).set_footer(text=f"職業：{job_name}"),
-                        ephemeral=True
+                        ephemeral=False
                     )
                     return
 
@@ -206,7 +219,7 @@ class Work(commands.Cog):
                 color=discord.Color.from_rgb(205, 133, 232)
             ).set_footer(text="幽幽子：賞花、工作、吃點心三連發！")
 
-            await ctx.respond(embed=embed, ephemeral=True)
+            await ctx.respond(embed=embed, ephemeral=False)
 
         except Exception as e:
             self.logger.exception(f"work 指令錯誤: {e}")
