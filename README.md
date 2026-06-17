@@ -37,9 +37,9 @@ Want to dive deep into Yuyuko Bot's systems? Check out our official documentatio
 
 | 📖 Document | 📝 Description | 🔗 Quick Link |
 | :--- | :--- | :---: |
-| 💼 **Job Guide** | Main/Sub job system, salary ranges, stamina costs, 3 passive skills, and mutual exclusion rules | [👉 Read Now](jobs.en.md) |
-| 🎣 **Fishing Encyclopedia** | Fishing scenarios, drop rates, and a complete guide to 100+ fish species with Fisherman/Angler bonuses | [👉 Read Now](fish.en.md) |
-| 🍡 **Shop & Stamina Guide** | Stamina system, full list of 39 items, taxed prices, value analysis, and Touhou collab meals | [👉 Read Now](shop_item.en.md) |
+| 💼 **Job Guide** | Main/Sub job system, salary ranges, stamina costs, 3 passive skills, and mutual exclusion rules | [👉 Read Now](doc/jobs.en.md) |
+| 🎣 **Fishing Encyclopedia** | Fishing scenarios, drop rates, and a complete guide to 100+ fish species with Fisherman/Angler bonuses | [👉 Read Now](doc/fish.en.md) |
+| 🍡 **Shop & Stamina Guide** | Stamina system, full list of 39 items, taxed prices, value analysis, and Touhou collab meals | [👉 Read Now](doc/shop_item.en.md) |
 
 </div>
 
