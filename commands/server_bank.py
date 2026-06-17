@@ -1,4 +1,6 @@
+import os
 import logging
+import asyncio
 from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 from zoneinfo import ZoneInfo
@@ -9,1295 +11,527 @@ from discord.ui import View, Modal, InputText
 logger = logging.getLogger("SakuraBot.ServerBank")
 
 
+def calculate_interest_rate(amount: float) -> float:
+    if amount < 100_000: return 0.10
+    elif amount < 1_000_000: return 0.15
+    elif amount < 10_000_000: return 0.25
+    elif amount < 100_000_000: return 0.40
+    else: return 0.60
+
+def interest_tier_description() -> str:
+    return (
+        "```yaml\n< 10萬: 10%\n10萬~100萬: 15%\n100萬~1000萬: 25%\n"
+        "1000萬~1億: 40%\n1億以上: 60%\n```"
+    )
+
+
 class ServerBank(commands.Cog):
-    """
-    🌸 幽幽子的櫻花金庫 🌸
-    冥界國庫、個人金庫、借貸、存取款──
-    幽幽子陪你守護每一枚幽靈幣,如同守護櫻花的綻放～
-    """
-    
     def __init__(self, bot: discord.Bot):
         self.bot = bot
         self.data_manager = bot.data_manager
         self.tz = ZoneInfo('Asia/Taipei')
-        self.check_overdue_loans.start()  # 啟動逾期檢查任務
+        self.check_overdue_loans.start()
         logger.info("🌸 櫻花金庫已於冥界花園中開啟")
 
     def cog_unload(self):
-        """卸載時停止定時任務"""
         self.check_overdue_loans.cancel()
 
-    # ----------- 初始化伺服器國庫 -----------
     def initialize_server_vault(self, guild_id: str, owner_id: str):
-        """初始化伺服器國庫，為擁有者添加初始金額"""
-        server_vault = self.data_manager._load_json("economy/server_vault.json", {})
-        
-        if guild_id not in server_vault:
-            server_vault[guild_id] = {
-                "vault": {
-                    "total": 5000000000.0,  # 50億初始金額
-                    "contributions": {
-                        owner_id: 5000000000.0  # 記錄擁有者的貢獻
-                    }
-                }
-            }
-            self.data_manager._save_json("economy/server_vault.json", server_vault)
-            logger.info(f"🏛️ 已為伺服器 {guild_id} 初始化國庫，擁有者 {owner_id} 獲得 5,000,000,000 幽靈幣")
-        elif "vault" not in server_vault[guild_id]:
-            server_vault[guild_id]["vault"] = {
-                "total": 5000000000.0,
-                "contributions": {
-                    owner_id: 5000000000.0
-                }
-            }
-            self.data_manager._save_json("economy/server_vault.json", server_vault)
-            logger.info(f"🏛️ 已為伺服器 {guild_id} 補充國庫結構")
-        
-        return server_vault
+        """初始化伺服器國庫 (純記憶體操作)"""
+        server_vault = self.data_manager.server_vault
+        need_save = False
 
-    # ----------- 定時檢查逾期借貸 -----------
-    @tasks.loop(hours=6)
+        if guild_id not in server_vault:
+            server_vault[guild_id] = {"vault": {"total": 5000000000.0, "contributions": {owner_id: 5000000000.0}}}
+            need_save = True
+        elif "vault" not in server_vault[guild_id]:
+            server_vault[guild_id]["vault"] = {"total": 5000000000.0, "contributions": {owner_id: 5000000000.0}}
+            need_save = True
+
+        return need_save
+
+    @tasks.loop(hours=168)
     async def check_overdue_loans(self):
-        """檢查逾期借貸並發送DM提醒,每7天翻4倍懲罰"""
+        """每週一檢查逾期借貸 (優化：批量修改記憶體，一次性保存)"""
         try:
-            personal_bank = self.data_manager._load_json("economy/personal_bank.json", {})
+            personal_bank = self.data_manager.personal_bank
             current_time = datetime.now(self.tz)
             
+            # 收集需要修改的數據，避免在迴圈中頻繁獲取鎖
+            updates_to_apply = [] 
+
             for guild_id, users in personal_bank.items():
                 guild = self.bot.get_guild(int(guild_id))
-                if not guild:
-                    continue
-                
-                # 🔧 追蹤是否有逾期用戶
-                has_overdue_users = False
-                
                 for user_id, user_data in users.items():
-                    if not isinstance(user_data, dict) or "loan" not in user_data:
-                        continue
-                    
+                    if not isinstance(user_data, dict) or "loan" not in user_data: continue
                     loan = user_data["loan"]
-                    # 🔧 修復: 檢查 loan 是否為 None
-                    if loan is None or not isinstance(loan, dict):
-                        continue
-                    
-                    if loan.get("repaid"):
-                        continue
-                    
-                    has_overdue_users = True
-                    
+                    if loan is None or not isinstance(loan, dict) or loan.get("repaid"): continue
+
                     try:
                         due_date = datetime.fromisoformat(loan["due_date"])
-                        if due_date.tzinfo is None:
-                            due_date = due_date.replace(tzinfo=self.tz)
-                    except Exception as e:
-                        logger.warning(f"⚠️ 無法解析到期日期: {e}")
-                        continue
-                    
+                        if due_date.tzinfo is None: due_date = due_date.replace(tzinfo=self.tz)
+                    except: continue
+
                     days_overdue = (current_time - due_date).days
-                    
-                    # 1-6天逾期: 利息提升至20%
-                    if 0 < days_overdue < 7:
-                        if loan.get("interest_rate") == 0.1:
-                            loan["interest_rate"] = 0.2
-                            personal_bank[guild_id][user_id]["loan"] = loan
-                            self.data_manager._save_json("economy/personal_bank.json", personal_bank)
-                            logger.info(f"⚠️ 用戶 {user_id} 的利息已提升至 20%")
-                    
-                    # 7天以上: 每7天翻4倍懲罰
+                    if days_overdue < 0: continue
+
+                    if days_overdue >= 30:
+                        updates_to_apply.append(("force_repay", guild_id, user_id, loan, days_overdue, guild))
                     elif days_overdue >= 7:
                         penalty_cycles = days_overdue // 7
                         last_penalty_cycle = loan.get("last_penalty_cycle", 0)
-                        
                         if penalty_cycles > last_penalty_cycle:
-                            new_penalties = penalty_cycles - last_penalty_cycle
-                            
-                            for _ in range(new_penalties):
-                                loan["amount"] *= 4
-                            
-                            loan["interest_rate"] = 0.1
-                            loan["last_penalty_cycle"] = penalty_cycles
-                            personal_bank[guild_id][user_id]["loan"] = loan
-                            self.data_manager._save_json("economy/personal_bank.json", personal_bank)
-                            
-                            total_multiplier = 4 ** penalty_cycles
-                            
-                            try:
-                                user = await self.bot.fetch_user(int(user_id))
-                                
-                                if penalty_cycles == 1:
-                                    title = "⚠️ 櫻花債逾期警告"
-                                    color = discord.Color.red()
-                                    emoji = "⚠️"
-                                elif penalty_cycles == 2:
-                                    title = "🔥 櫻花債嚴重逾期!"
-                                    color = discord.Color.from_rgb(255, 69, 0)
-                                    emoji = "🔥"
-                                else:
-                                    title = "💀 櫻花債已失控!"
-                                    color = discord.Color.from_rgb(139, 0, 0)
-                                    emoji = "💀"
-                                
-                                embed = discord.Embed(
-                                    title=title,
-                                    description=(
-                                        f"{emoji} 你在 **{guild.name}** 的借貸已經逾期 **{days_overdue}** 天了!\n\n"
-                                        f"由於長期未歸還,幽幽子不得不應用懲罰措施...\n"
-                                        f"你的借貸金額已經提升至 **{total_multiplier}倍**!"
-                                    ),
-                                    color=color
-                                )
-                                embed.add_field(
-                                    name="📋 債務詳情",
-                                    value=(
-                                        f"```yaml\n"
-                                        f"借貸金額: {self.format_number(loan['amount'])} 幽靈幣\n"
-                                        f"利息率: {loan['interest_rate'] * 100:.0f}%\n"
-                                        f"需還款: {self.format_number(loan['amount'] * 1.1)} 幽靈幣\n"
-                                        f"逾期天數: {days_overdue} 天\n"
-                                        f"懲罰倍數: {total_multiplier}x\n"
-                                        f"懲罰次數: 第 {penalty_cycles} 次\n"
-                                        f"```"
-                                    ),
-                                    inline=False
-                                )
-                                
-                                if penalty_cycles == 1:
-                                    advice = "• 請**立即還款**,避免債務繼續翻倍!\n• 每逾期7天,債務會再 ×4!"
-                                elif penalty_cycles == 2:
-                                    advice = "• 債務已經 **16倍**!\n• 再7天將變成 **64倍**!\n• **務必盡快還款**!"
-                                else:
-                                    advice = f"• 債務已達 **{total_multiplier}倍**,幾乎無法償還!\n• 請聯繫伺服器管理員尋求幫助!"
-                                
-                                embed.add_field(
-                                    name="💡 建議",
-                                    value=advice,
-                                    inline=False
-                                )
-                                embed.set_footer(text="櫻花債不可輕視 · 幽幽子")
-                                
-                                await user.send(embed=embed)
-                                logger.info(f"✉️ 已向用戶 {user_id} 發送第 {penalty_cycles} 次逾期提醒")
-                            except Exception as e:
-                                logger.error(f"❌ 無法向用戶 {user_id} 發送DM: {e}")
-                
-                # 🔧 記錄該伺服器沒有拖欠貸款的用戶
-                if not has_overdue_users:
-                    logger.info(f"✅ 伺服器 {guild_id} ({guild.name if guild else 'Unknown'}) 沒有用戶拖欠貸款")
-        
+                            updates_to_apply.append(("penalty", guild_id, user_id, loan, penalty_cycles, last_penalty_cycle, days_overdue, guild))
+
+            # 一次性獲取鎖，批量修改記憶體
+            if updates_to_apply:
+                async with self.data_manager.balance_lock:
+                    balance = self.data_manager.balance
+                    for update in updates_to_apply:
+                        if update[0] == "force_repay":
+                            await self._force_repay_in_lock(update[1], update[2], update[3], update[4], update[5])
+                        elif update[0] == "penalty":
+                            self._apply_penalty_in_lock(update[1], update[2], update[3], update[4], update[5])
+
+                # 鎖釋放後，統一保存
+                await self.data_manager.save_all_async()
+
+                # 發送 DM (在鎖外進行，避免阻塞)
+                for update in updates_to_apply:
+                    if update[0] == "penalty":
+                        await self._send_penalty_dm(update[1], update[2], update[3], update[4], update[6], update[7])
+
         except Exception as e:
             logger.error(f"❌ 逾期檢查失敗: {e}", exc_info=True)
 
+    def _apply_penalty_in_lock(self, guild_id, user_id, loan, penalty_cycles, last_penalty_cycle):
+        """在鎖內套用逾期懲罰"""
+        new_penalties = penalty_cycles - last_penalty_cycle
+        for i in range(new_penalties):
+            current_cycle = last_penalty_cycle + i + 1
+            if current_cycle == 1: loan["amount"] *= 2
+            else: loan["amount"] *= 4
+        loan["last_penalty_cycle"] = penalty_cycles
+
+    async def _force_repay_in_lock(self, guild_id, user_id, loan, days_overdue, guild):
+        """在鎖內執行強制還款"""
+        amount_with_interest = round(loan["amount"] * (1 + loan["interest_rate"]), 2)
+        balance = self.data_manager.balance
+        personal_bank = self.data_manager.personal_bank
+        
+        hand_balance = balance.get(guild_id, {}).get(user_id, 0.0)
+        bank_balance = personal_bank.get(guild_id, {}).get(user_id, {}).get("balance", 0.0)
+        total_available = hand_balance + bank_balance
+        remaining = amount_with_interest
+
+        deducted_hand = min(hand_balance, remaining) if hand_balance > 0 else 0.0
+        if guild_id in balance and user_id in balance[guild_id]:
+            balance[guild_id][user_id] -= deducted_hand
+        remaining -= deducted_hand
+
+        deducted_bank = min(bank_balance, remaining) if remaining > 0 and bank_balance > 0 else 0.0
+        if guild_id in personal_bank and user_id in personal_bank[guild_id]:
+            personal_bank[guild_id][user_id]["balance"] -= deducted_bank
+        
+        personal_bank[guild_id][user_id]["loan"] = None
+        
+        # 調整信譽
+        self.adjust_credit(guild_id, user_id, -1, "逾期30天強制還款")
+
+        logger.info(f"🔴 強制還款: {user_id} 逾期 {days_overdue} 天，扣款 {deducted_hand + deducted_bank:.2f}")
+
+    async def _send_penalty_dm(self, guild_id, user_id, loan, penalty_cycles, days_overdue, guild):
+        """發送逾期懲罰 DM"""
+        try:
+            fetched_user = await self.bot.fetch_user(int(user_id))
+            guild_name = guild.name if guild else guild_id
+            title = "⚠️ 櫻花債逾期第一週警告" if penalty_cycles == 1 else f"💀 逾期第{penalty_cycles}週！"
+            color = discord.Color.orange() if penalty_cycles == 1 else discord.Color.from_rgb(139, 0, 0)
+            
+            embed = discord.Embed(
+                title=title,
+                description=f"你在 **{guild_name}** 的借貸已逾期 **{days_overdue}** 天！\n債務已懲罰性增加！",
+                color=color
+            )
+            embed.add_field(name="📋 當前債務", value=f"```yaml\n當前債務: {self.format_number(loan['amount'])} 幽靈幣\n```", inline=False)
+            embed.set_footer(text="冥界強制令不可違抗 · 幽幽子")
+            await fetched_user.send(embed=embed)
+        except Exception as e:
+            logger.error(f"❌ 無法向用戶 {user_id} 發送DM: {e}")
+
     @check_overdue_loans.before_loop
     async def before_check_overdue_loans(self):
-        """等待bot準備完成"""
         await self.bot.wait_until_ready()
+        now = datetime.now(self.tz)
+        days_until_monday = (7 - now.weekday()) % 7
+        if days_until_monday == 0 and now.hour >= 0: days_until_monday = 7
+        next_monday = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=days_until_monday)
+        await asyncio.sleep((next_monday - now).total_seconds())
 
-    # ----------- 金額格式化 -----------
     def format_number(self, num: float) -> str:
-        """將數字格式化為易讀形式"""
-        if num >= 1e20:
-            return f"{num / 1e20:.2f} 兆京"
-        elif num >= 1e16:
-            return f"{num / 1e16:.2f} 京"
-        elif num >= 1e12:
-            return f"{num / 1e12:.2f} 兆"
-        elif num >= 1e8:
-            return f"{num / 1e8:.2f} 億"
-        else:
-            return f"{num:.2f}"
+        if num >= 1e20: return f"{num / 1e20:.2f} 兆京"
+        elif num >= 1e16: return f"{num / 1e16:.2f} 京"
+        elif num >= 1e12: return f"{num / 1e12:.2f} 兆"
+        elif num >= 1e8: return f"{num / 1e8:.2f} 億"
+        else: return f"{num:.2f}"
 
-    # ----------- 記錄交易 -----------
-    def log_transaction(self, guild_id: str, user_id: str, amount: float, transaction_type: str):
-        """記錄交易"""
+    async def log_transaction(self, guild_id: str, user_id: str, amount: float, transaction_type: str):
+        """記錄交易 (使用 to_thread 因為 transactions.json 未納入 DataManager)"""
+        path = os.path.join(self.data_manager.economy_dir, "transactions.json")
         try:
-            transactions = self.data_manager._load_json("economy/transactions.json", {})
-            
-            if guild_id not in transactions:
-                transactions[guild_id] = []
-            
-            transactions[guild_id].append({
-                "user_id": user_id,
-                "amount": float(amount),
-                "type": transaction_type,
-                "timestamp": datetime.now(self.tz).isoformat()
+            transactions = await asyncio.to_thread(self.data_manager._load_json, path, {})
+            transactions.setdefault(guild_id, []).append({
+                "user_id": user_id, "amount": float(amount),
+                "type": transaction_type, "timestamp": datetime.now(self.tz).isoformat()
             })
-            
-            self.data_manager._save_json("economy/transactions.json", transactions)
-            logger.info(f"📝 交易已記錄: {transaction_type} | 用戶: {user_id} | 金額: {amount:.2f}")
+            await asyncio.to_thread(self.data_manager._save_json, path, transactions)
         except Exception as e:
-            logger.error(f"❌ 交易記錄失敗: {e}", exc_info=True)
+            logger.error(f"❌ 交易記錄失敗: {e}")
 
-    # ----------- 初始化用戶數據 -----------
-    def initialize_user_data(self, balance: dict, personal_bank: dict, guild_id: str, user_id: str):
-        """初始化用戶數據結構"""
-        if guild_id not in balance:
-            balance[guild_id] = {}
-        if user_id not in balance[guild_id]:
-            balance[guild_id][user_id] = 0.0
-        elif not isinstance(balance[guild_id][user_id], (int, float)):
-            balance[guild_id][user_id] = 0.0
+    def is_blacklisted(self, guild_id: str, user_id: str) -> bool:
+        return user_id in self.data_manager.server_vault.get(guild_id, {}).get("blacklist", [])
 
-        if guild_id not in personal_bank:
-            personal_bank[guild_id] = {}
-        if user_id not in personal_bank[guild_id]:
-            personal_bank[guild_id][user_id] = {
-                "balance": 0.0,
-                "loan": None
-            }
-        elif not isinstance(personal_bank[guild_id][user_id], dict):
-            personal_bank[guild_id][user_id] = {
-                "balance": 0.0,
-                "loan": None
-            }
+    def add_to_blacklist(self, guild_id: str, user_id: str):
+        sv = self.data_manager.server_vault
+        sv.setdefault(guild_id, {}).setdefault("blacklist", [])
+        if user_id not in sv[guild_id]["blacklist"]:
+            sv[guild_id]["blacklist"].append(user_id)
 
-        return balance, personal_bank
+    def remove_from_blacklist(self, guild_id: str, user_id: str):
+        sv = self.data_manager.server_vault
+        bl = sv.get(guild_id, {}).get("blacklist", [])
+        if user_id in bl: bl.remove(user_id)
 
-    # ----------- 檢查借貸狀態 -----------
-    def check_loan_status(self, personal_bank: dict, guild_id: str, user_id: str):
-        """檢查用戶借貸狀態"""
-        if guild_id not in personal_bank or user_id not in personal_bank[guild_id]:
-            return None
-        
-        user_data = personal_bank[guild_id][user_id]
-        if not isinstance(user_data, dict) or "loan" not in user_data:
-            return None
-        
-        loan = user_data["loan"]
-        if loan is None or loan.get("repaid"):
-            return None
-        
-        return loan
+    def get_credit(self, guild_id: str, user_id: str) -> int:
+        return self.data_manager.credit.get(guild_id, {}).get(user_id, {}).get("score", 10)
 
-    # ----------- 主金庫互動介面 -----------
-    @discord.slash_command(
-        name="server_bank",
-        description="🌸 與幽幽子的櫻花金庫互動,存錢、取錢或借貸～"
-    )
+    def adjust_credit(self, guild_id: str, user_id: str, delta: int, reason: str):
+        credit_data = self.data_manager.credit
+        credit_data.setdefault(guild_id, {}).setdefault(user_id, {"score": 10})
+        old = credit_data[guild_id][user_id].get("score", 10)
+        new = max(0, min(10, old + delta))
+        credit_data[guild_id][user_id]["score"] = new
+        if new <= 0: self.add_to_blacklist(guild_id, user_id)
+        elif old <= 0 and new > 0: self.remove_from_blacklist(guild_id, user_id)
+        return old, new
+
+    @discord.slash_command(name="server_bank", description="🌸 與幽幽子的櫻花金庫互動～")
     async def server_bank(self, ctx: discord.ApplicationContext):
-        """開啟櫻花金庫"""
-        guild_id = str(ctx.guild.id)
-        user_id = str(ctx.author.id)
-        owner_id = str(ctx.guild.owner_id)
+        if not await self.data_manager.check_backup_status(ctx, "server_bank"): return
 
-        # 使用內存數據而不是直接從文件讀取
-        balance = self.data_manager.balance
-        personal_bank = self.data_manager._load_json("economy/personal_bank.json", {})
+        guild_id, user_id, owner_id = str(ctx.guild.id), str(ctx.author.id), str(ctx.guild.owner_id)
         
-        # 🔧 修復問題1: 初始化國庫並為擁有者添加初始金額
-        server_vault = self.initialize_server_vault(guild_id, owner_id)
+        # 初始化國庫 (若需要)
+        if self.initialize_server_vault(guild_id, owner_id):
+            await self.data_manager.save_all_async()
 
-        # 初始化用戶數據
-        if guild_id not in balance:
-            balance[guild_id] = {}
-        if user_id not in balance[guild_id]:
-            balance[guild_id][user_id] = 0.0
+        balance = self.data_manager.balance
+        personal_bank = self.data_manager.personal_bank
+        server_vault = self.data_manager.server_vault
 
-        if guild_id not in personal_bank:
-            personal_bank[guild_id] = {}
-        if user_id not in personal_bank[guild_id]:
-            personal_bank[guild_id][user_id] = {
-                "balance": 0.0,
-                "loan": None
-            }
-        elif not isinstance(personal_bank[guild_id][user_id], dict):
-            personal_bank[guild_id][user_id] = {
-                "balance": 0.0,
-                "loan": None
-            }
+        # 確保用戶數據結構存在
+        balance.setdefault(guild_id, {}).setdefault(user_id, 0.0)
+        personal_bank.setdefault(guild_id, {}).setdefault(user_id, {"balance": 0.0, "loan": None})
 
         user_balance = balance[guild_id][user_id]
-        personal_bank_balance = personal_bank[guild_id][user_id]["balance"]
-        
-        # 從 server_vault 獲取國庫總額
+        pb_balance = personal_bank[guild_id][user_id]["balance"]
         vault_total = server_vault.get(guild_id, {}).get("vault", {}).get("total", 0.0)
+        loan = personal_bank[guild_id][user_id].get("loan")
 
-        loan = self.check_loan_status(personal_bank, guild_id, user_id)
+        embed = self._build_main_embed(ctx, user_balance, pb_balance, vault_total, loan)
+        view = BankButtonsView(self, ctx, guild_id, user_id, bool(loan and not loan.get("repaid")))
+
+        await ctx.respond(embed=embed, view=view, ephemeral=False)
+        view.message = await ctx.interaction.original_response()
+
+    def _build_main_embed(self, ctx, user_balance, pb_balance, vault_total, loan):
         loan_info = ""
-        
-        # 計算可借貸額度（國庫餘額的50%或固定額度，取較小值）
-        max_borrow_amount = min(vault_total * 0.5, 1000000.0)  # 最多借100萬或國庫的50%
-        
-        if loan:
+        if loan and not loan.get("repaid"):
             try:
                 due_date = datetime.fromisoformat(loan["due_date"])
-                if due_date.tzinfo is None:
-                    due_date = due_date.replace(tzinfo=self.tz)
-            except Exception:
-                due_date = datetime.now(self.tz) + timedelta(days=5)
-
+                if due_date.tzinfo is None: due_date = due_date.replace(tzinfo=self.tz)
+            except: due_date = datetime.now(self.tz) + timedelta(days=5)
+            
             amount_with_interest = round(loan["amount"] * (1 + loan["interest_rate"]), 2)
-            
-            current_time = datetime.now(self.tz)
-            is_overdue = current_time > due_date
-            days_overdue = (current_time - due_date).days if is_overdue else 0
-            
-            overdue_emoji = "⚠️" if is_overdue else "💸"
-            overdue_text = ""
-            if days_overdue >= 7:
-                overdue_text = " **已逾期超過一週!金額已4倍懲罰!**"
-            elif is_overdue:
-                overdue_text = f" **已逾期 {days_overdue} 天!利息已加倍!**"
+            days_overdue = max(0, (datetime.now(self.tz) - due_date).days)
+            overdue_text = " **逾期超過30天！**" if days_overdue >= 30 else f" **已逾期 {days_overdue} 天！**" if days_overdue > 0 else ""
             
             loan_info = (
-                f"\n\n{overdue_emoji} **未還款的櫻花債**{overdue_text}\n"
-                f"```yaml\n"
-                f"借貸金額: {self.format_number(loan['amount'])} 幽靈幣\n"
-                f"利息率: {loan['interest_rate'] * 100:.0f}%\n"
-                f"需還款: {self.format_number(amount_with_interest)} 幽靈幣\n"
-                f"截止日期: {due_date.strftime('%Y-%m-%d %H:%M')}\n"
-                f"```"
+                f"\n\n⚠️ **未還款的櫻花債**{overdue_text}\n"
+                f"```yaml\n借貸: {self.format_number(loan['amount'])}\n需還: {self.format_number(amount_with_interest)}\n截止: {due_date.strftime('%Y-%m-%d')}\n```"
             )
 
         embed = discord.Embed(
             title="🌸 幽幽子的櫻花金庫 🌸",
-            description=(
-                f"呼呼～歡迎來到 **{ctx.guild.name}** 的金庫!\n"
-                f"你是要存錢、取錢還是借貸呢?\n"
-                f"幽幽子會好好保管你的幽靈幣哦～"
-            ),
+            description=f"歡迎來到 **{ctx.guild.name}** 的金庫!\n幽幽子會好好保管你的幽靈幣哦～",
             color=discord.Color.from_rgb(255, 182, 193)
         )
-        
-        # 冥界國庫資訊
-        embed.add_field(
-            name="🏛️ 冥界國庫（伺服器金庫）",
-            value=(
-                f"```yaml\n"
-                f"國庫總額: {self.format_number(vault_total)} 幽靈幣\n"
-                f"可借額度: {self.format_number(max_borrow_amount)} 幽靈幣\n"
-                f"```"
-            ),
-            inline=False
-        )
-        
-        # 個人財富狀況
-        embed.add_field(
-            name="💰 你的財富狀況",
-            value=(
-                f"```yaml\n"
-                f"手頭餘額: {user_balance:,.2f} 幽靈幣\n"
-                f"個人金庫: {self.format_number(personal_bank_balance)} 幽靈幣\n"
-                f"總資產: {self.format_number(user_balance + personal_bank_balance)} 幽靈幣\n"
-                f"```"
-            ),
-            inline=False
-        )
-        
-        if loan_info:
-            embed.add_field(
-                name="📋 借貸詳情",
-                value=loan_info,
-                inline=False
-            )
-        
-        embed.set_footer(
-            text="櫻花飄落處,財富也隨風而至 · 幽幽子",
-            icon_url=self.bot.user.avatar.url if self.bot.user and self.bot.user.avatar else None
-        )
+        embed.add_field(name="🏛️ 冥界國庫", value=f"```yaml\n總額: {self.format_number(vault_total)}\n```", inline=False)
+        embed.add_field(name="💰 你的財富", value=f"```yaml\n手頭: {user_balance:,.2f}\n金庫: {self.format_number(pb_balance)}\n總計: {self.format_number(user_balance + pb_balance)}\n```", inline=False)
+        if loan_info: embed.add_field(name="📋 借貸詳情", value=loan_info, inline=False)
+        embed.set_footer(text="每週一自動檢查逾期 · 幽幽子", icon_url=self.bot.user.display_avatar.url)
         embed.set_thumbnail(url=ctx.author.display_avatar.url)
-
-        view = BankButtonsView(self, ctx, guild_id, user_id, bool(loan))
-        
-        try:
-            # 🔧 修復：使用 ephemeral=False 確保消息可編輯
-            await ctx.respond(embed=embed, view=view, ephemeral=False)
-            
-            # 🔧 修復：獲取原始回應
-            try:
-                # 等待一小段時間確保消息已發送
-                import asyncio
-                await asyncio.sleep(0.1)
-                view.message = await ctx.interaction.original_response()
-                view.is_ephemeral = False
-                logger.info(f"✅ 成功獲取 message 對象")
-            except discord.errors.NotFound:
-                logger.warning("⚠️ 無法取得 original_response（可能是 ephemeral）")
-                view.message = None
-                view.is_ephemeral = True
-            except Exception as e:
-                logger.warning(f"⚠️ 無法取得 original_response: {e}")
-                view.message = None
-                view.is_ephemeral = True
-            
-            logger.info(f"👤 用戶 {ctx.author.name}({user_id}) 開啟櫻花金庫")
-            
-            # 保存 personal_bank（balance 不需要保存，因為使用內存）
-            self.data_manager._save_json("economy/personal_bank.json", personal_bank)
-        except Exception as e:
-            logger.error(f"❌ 金庫開啟失敗: {e}", exc_info=True)
+        return embed
 
 
 class BankButtonsView(View):
-    """金庫操作按鈕"""
-    
-    def __init__(self, cog: ServerBank, ctx: discord.ApplicationContext, guild_id: str, user_id: str, has_loan: bool):
+    def __init__(self, cog, ctx, guild_id, user_id, has_loan):
         super().__init__(timeout=60)
-        self.cog = cog
-        self.ctx = ctx
-        self.guild_id = guild_id
-        self.user_id = user_id
-        self.has_loan = has_loan
+        self.cog, self.ctx, self.guild_id, self.user_id, self.has_loan = cog, ctx, guild_id, user_id, has_loan
         self.message = None
-        self.interaction_completed = False
-        self.is_ephemeral = False  # 🔧 新增：追蹤是否為 ephemeral
-        
-        if len(self.children) >= 4:
-            self.children[3].disabled = not has_loan
+        if len(self.children) >= 4: self.children[3].disabled = not has_loan
 
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        """確保只有命令發起者能操作"""
+    async def interaction_check(self, interaction):
         if interaction.user.id != self.ctx.author.id:
-            await interaction.response.send_message("呀啦呀啦～這不是你的金庫操作哦!", ephemeral=True)
+            await interaction.response.send_message("這不是你的金庫哦!", ephemeral=True)
             return False
-        
-        if self.interaction_completed:
-            await interaction.response.send_message("操作已完成,請重新執行 `/server_bank` 命令!", ephemeral=True)
-            return False
-        
         return True
 
     async def on_timeout(self):
-        """超時處理"""
-        if self.interaction_completed:
-            return
-        
-        # 🔧 修復：不嘗試編輯 ephemeral 消息
-        if self.is_ephemeral:
-            logger.info("⏰ View 超時（ephemeral 消息，不編輯）")
-            return
-        
-        for item in self.children:
-            item.disabled = True
-        
-        embed = discord.Embed(
-            title="🌸 金庫操作已結束",
-            description="操作已超時,櫻花已隨風散去...\n請重新執行 `/server_bank` 命令!",
-            color=discord.Color.orange()
-        )
-        embed.set_footer(text="時光流逝如櫻花飄落 · 幽幽子")
-        
+        for item in self.children: item.disabled = True
         if self.message:
-            try:
-                await self.message.edit(embed=embed, view=self)
-            except discord.errors.NotFound:
-                logger.warning("⚠️ 訊息已被刪除")
-            except discord.errors.Forbidden:
-                logger.warning("⚠️ 無法編輯訊息（權限不足）")
-            except Exception as e:
-                logger.error(f"❌ 金庫超時處理失敗: {e}")
-    
-    async def update_main_embed(self, interaction: discord.Interaction):
-        """更新主介面"""
-        # 🔧 修復：ephemeral 消息不能被編輯
-        if self.is_ephemeral:
-            logger.info("ℹ️ Ephemeral 消息不支援編輯，跳過更新")
-            return
-        
-        try:
-            # 使用內存數據
-            balance = self.cog.data_manager.balance
-            personal_bank = self.cog.data_manager._load_json("economy/personal_bank.json", {})
-            server_vault = self.cog.data_manager._load_json("economy/server_vault.json", {})
-            
-            user_balance = balance.get(self.guild_id, {}).get(self.user_id, 0.0)
-            personal_bank_balance = personal_bank.get(self.guild_id, {}).get(self.user_id, {}).get("balance", 0.0)
-            
-            # 從 server_vault 獲取國庫總額
-            vault_total = server_vault.get(self.guild_id, {}).get("vault", {}).get("total", 0.0)
-            
-            # 計算可借貸額度
-            max_borrow_amount = min(vault_total * 0.5, 1000000.0)
-            
-            loan = self.cog.check_loan_status(personal_bank, self.guild_id, self.user_id)
-            loan_info = ""
-            
-            if loan:
-                try:
-                    due_date = datetime.fromisoformat(loan["due_date"])
-                    if due_date.tzinfo is None:
-                        due_date = due_date.replace(tzinfo=self.cog.tz)
-                except Exception:
-                    due_date = datetime.now(self.cog.tz) + timedelta(days=5)
+            try: await self.message.edit(view=self)
+            except: pass
 
-                amount_with_interest = round(loan["amount"] * (1 + loan["interest_rate"]), 2)
-                
-                current_time = datetime.now(self.cog.tz)
-                is_overdue = current_time > due_date
-                days_overdue = (current_time - due_date).days if is_overdue else 0
-                
-                overdue_emoji = "⚠️" if is_overdue else "💸"
-                overdue_text = ""
-                if days_overdue >= 7:
-                    overdue_text = " **已逾期超過一週!金額已4倍懲罰!**"
-                elif is_overdue:
-                    overdue_text = f" **已逾期 {days_overdue} 天!利息已加倍!**"
-                
-                loan_info = (
-                    f"\n\n{overdue_emoji} **未還款的櫻花債**{overdue_text}\n"
-                    f"```yaml\n"
-                    f"借貸金額: {self.cog.format_number(loan['amount'])} 幽靈幣\n"
-                    f"利息率: {loan['interest_rate'] * 100:.0f}%\n"
-                    f"需還款: {self.cog.format_number(amount_with_interest)} 幽靈幣\n"
-                    f"截止日期: {due_date.strftime('%Y-%m-%d %H:%M')}\n"
-                    f"```"
-                )
-            
-            embed = discord.Embed(
-                title="🌸 幽幽子的櫻花金庫 🌸",
-                description=(
-                    f"呼呼～歡迎來到 **{self.ctx.guild.name}** 的金庫!\n"
-                    f"你是要存錢、取錢還是借貸呢?\n"
-                    f"幽幽子會好好保管你的幽靈幣哦～"
-                ),
-                color=discord.Color.from_rgb(255, 182, 193)
-            )
-            
-            # 冥界國庫資訊
-            embed.add_field(
-                name="🏛️ 冥界國庫（伺服器金庫）",
-                value=(
-                    f"```yaml\n"
-                    f"國庫總額: {self.cog.format_number(vault_total)} 幽靈幣\n"
-                    f"可借額度: {self.cog.format_number(max_borrow_amount)} 幽靈幣\n"
-                    f"```"
-                ),
-                inline=False
-            )
-            
-            # 個人財富狀況
-            embed.add_field(
-                name="💰 你的財富狀況",
-                value=(
-                    f"```yaml\n"
-                    f"手頭餘額: {user_balance:,.2f} 幽靈幣\n"
-                    f"個人金庫: {self.cog.format_number(personal_bank_balance)} 幽靈幣\n"
-                    f"總資產: {self.cog.format_number(user_balance + personal_bank_balance)} 幽靈幣\n"
-                    f"```"
-                ),
-                inline=False
-            )
-            
-            if loan_info:
-                embed.add_field(
-                    name="📋 借貸詳情",
-                    value=loan_info,
-                    inline=False
-                )
-            
-            embed.set_footer(
-                text="櫻花飄落處,財富也隨風而至 · 幽幽子",
-                icon_url=self.cog.bot.user.avatar.url if self.cog.bot.user and self.cog.bot.user.avatar else None
-            )
-            embed.set_thumbnail(url=interaction.user.display_avatar.url)
-            
-            self.has_loan = bool(loan)
-            if len(self.children) >= 4:
-                self.children[3].disabled = not self.has_loan
-            
-            # 🔧 修復：安全地編輯訊息
-            if self.message:
-                try:
-                    await self.message.edit(embed=embed, view=self)
-                    logger.info("✅ 主介面已更新")
-                except discord.errors.NotFound:
-                    logger.warning("⚠️ 訊息已被刪除")
-                except discord.errors.Forbidden:
-                    logger.warning("⚠️ 無法編輯訊息（可能是權限問題）")
-                except discord.errors.HTTPException as e:
-                    logger.error(f"❌ HTTP 錯誤: {e}")
-                except Exception as e:
-                    logger.error(f"❌ 編輯訊息失敗: {e}")
-            else:
-                logger.warning("⚠️ message 對象不存在，無法更新主介面")
-            
-        except Exception as e:
-            logger.error(f"❌ 更新主 embed 失敗: {e}", exc_info=True)
+    async def update_main_embed(self, interaction):
+        balance = self.cog.data_manager.balance
+        personal_bank = self.cog.data_manager.personal_bank
+        server_vault = self.cog.data_manager.server_vault
+
+        user_balance = balance.get(self.guild_id, {}).get(self.user_id, 0.0)
+        pb_balance = personal_bank.get(self.guild_id, {}).get(self.user_id, {}).get("balance", 0.0)
+        vault_total = server_vault.get(self.guild_id, {}).get("vault", {}).get("total", 0.0)
+        loan = personal_bank.get(self.guild_id, {}).get(self.user_id, {}).get("loan")
+        
+        self.has_loan = bool(loan and not loan.get("repaid"))
+        if len(self.children) >= 4: self.children[3].disabled = not self.has_loan
+
+        embed = self.cog._build_main_embed(self.ctx, user_balance, pb_balance, vault_total, loan)
+        if self.message:
+            try: await self.message.edit(embed=embed, view=self)
+            except: pass
 
     @discord.ui.button(label="存錢", style=discord.ButtonStyle.primary, emoji="💰", row=0)
-    async def deposit(self, button: discord.ui.Button, interaction: discord.Interaction):
-        """存款按鈕"""
-        modal = DepositModal(self.cog, self.guild_id, self.user_id, self)
-        await interaction.response.send_modal(modal)
+    async def deposit(self, button, interaction):
+        await interaction.response.send_modal(DepositModal(self.cog, self.guild_id, self.user_id, self))
 
     @discord.ui.button(label="取錢", style=discord.ButtonStyle.success, emoji="💵", row=0)
-    async def withdraw(self, button: discord.ui.Button, interaction: discord.Interaction):
-        """取款按鈕"""
-        # 檢查個人金庫是否有餘額
-        personal_bank = self.cog.data_manager._load_json("economy/personal_bank.json", {})
-        bank_balance = personal_bank.get(self.guild_id, {}).get(self.user_id, {}).get("balance", 0.0)
-        
-        if bank_balance <= 0:
-            embed = discord.Embed(
-                title="🌸 金庫空空如也",
-                description="呼呼～你的個人金庫裡空空如也呢...\n還沒有存入任何幽靈幣哦!",
-                color=discord.Color.red()
-            )
-            embed.set_footer(text="先存錢才能取錢哦 · 幽幽子")
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+    async def withdraw(self, button, interaction):
+        pb_balance = self.cog.data_manager.personal_bank.get(self.guild_id, {}).get(self.user_id, {}).get("balance", 0.0)
+        if pb_balance <= 0:
+            await interaction.response.send_message("金庫空空如也哦!", ephemeral=True)
             return
-        
-        modal = WithdrawModal(self.cog, self.guild_id, self.user_id, self)
-        await interaction.response.send_modal(modal)
+        await interaction.response.send_modal(WithdrawModal(self.cog, self.guild_id, self.user_id, self))
 
     @discord.ui.button(label="借貸", style=discord.ButtonStyle.danger, emoji="📜", row=0)
-    async def borrow(self, button: discord.ui.Button, interaction: discord.Interaction):
-        """借貸按鈕"""
-        modal = BorrowModal(self.cog, self.guild_id, self.user_id, self.has_loan, self)
-        await interaction.response.send_modal(modal)
+    async def borrow(self, button, interaction):
+        await interaction.response.send_modal(BorrowModal(self.cog, self.guild_id, self.user_id, self.has_loan, self))
 
     @discord.ui.button(label="還款", style=discord.ButtonStyle.green, emoji="✅", row=1)
-    async def repay(self, button: discord.ui.Button, interaction: discord.Interaction):
-        """還款按鈕"""
+    async def repay(self, button, interaction):
+        if not await self.cog.data_manager.check_backup_status(interaction, "bank_repay"): return
+        
         if not self.has_loan:
-            embed = discord.Embed(
-                title="🌸 無需還款",
-                description="呼呼～你目前沒有未還款的櫻花債呢!\n靈魂很輕盈,真好～",
-                color=discord.Color.gold()
-            )
-            embed.set_footer(text="無債一身輕 · 幽幽子")
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await interaction.response.send_message("你沒有債務哦!", ephemeral=True)
             return
-        
-        # 🔧 修復：使用 defer 而不是 defer()
+
         await interaction.response.defer(ephemeral=True)
+        personal_bank = self.cog.data_manager.personal_bank
+        server_vault = self.cog.data_manager.server_vault
+        loan = personal_bank.get(self.guild_id, {}).get(self.user_id, {}).get("loan")
         
-        try:
-            async with self.cog.data_manager.balance_lock:
-                balance = self.cog.data_manager.balance
-                personal_bank = self.cog.data_manager._load_json("economy/personal_bank.json", {})
-                server_vault = self.cog.data_manager._load_json("economy/server_vault.json", {})
-                
-                loan = self.cog.check_loan_status(personal_bank, self.guild_id, self.user_id)
-            
-            if not loan:
-                embed = discord.Embed(
-                    title="🌸 無需還款",
-                    description="呼呼～你目前沒有未還款的櫻花債呢!",
-                    color=discord.Color.gold()
-                )
-                await interaction.followup.send(embed=embed, ephemeral=True)
-                await self.update_main_embed(interaction)
-                return
-            
+        if not loan or loan.get("repaid"):
+            await interaction.followup.send("無需還款", ephemeral=True)
+            return
+
+        amount_with_interest = round(loan["amount"] * (1 + loan["interest_rate"]), 2)
+
+        async with self.cog.data_manager.balance_lock:
+            balance = self.cog.data_manager.balance
             user_balance = balance.get(self.guild_id, {}).get(self.user_id, 0.0)
-            amount_with_interest = round(loan["amount"] * (1 + loan["interest_rate"]), 2)
-            
             if user_balance < amount_with_interest:
-                embed = discord.Embed(
-                    title="🌸 餘額不足",
-                    description=(
-                        f"呼呼～你需要 **{self.cog.format_number(amount_with_interest)}** 幽靈幣才能還款,\n"
-                        f"但你只有 **{user_balance:,.2f}** 幽靈幣...\n"
-                        f"還差 **{self.cog.format_number(amount_with_interest - user_balance)}** 幽靈幣呢!"
-                    ),
-                    color=discord.Color.red()
-                )
-                embed.set_footer(text="先賺點幽靈幣吧 · 幽幽子")
-                await interaction.followup.send(embed=embed, ephemeral=True)
+                await interaction.followup.send(f"餘額不足！需要 {self.cog.format_number(amount_with_interest)}", ephemeral=True)
                 return
-            
-            # 執行還款
-            async with self.cog.data_manager.balance_lock:
-                balance[self.guild_id][self.user_id] -= amount_with_interest
-                personal_bank[self.guild_id][self.user_id]["loan"] = None
-                
-                # 🔧 修復：還款時將本金歸還國庫
-                if self.guild_id in server_vault and "vault" in server_vault[self.guild_id]:
-                    server_vault[self.guild_id]["vault"]["total"] += loan["amount"]
-                    self.cog.data_manager._save_json("economy/server_vault.json", server_vault)
-                    logger.info(f"💰 本金 {loan['amount']:.2f} 已歸還國庫")
-                
-                self.cog.data_manager.save_all()
-                self.cog.data_manager._save_json("economy/personal_bank.json", personal_bank)
-                self.cog.log_transaction(self.guild_id, self.user_id, amount_with_interest, "repay")
-            
-            # 更新主界面
-            await self.update_main_embed(interaction)
-            
-            # 成功消息
-            interest_amount = amount_with_interest - loan["amount"]
-            embed = discord.Embed(
-                title="🌸 還款成功!",
-                description=f"呼呼～你已成功還款 **{self.cog.format_number(amount_with_interest)}** 幽靈幣!\n債務已清除,櫻花債不再～",
-                color=discord.Color.from_rgb(144, 238, 144)
-            )
-            embed.add_field(
-                name="💰 還款明細",
-                value=(
-                    f"```yaml\n"
-                    f"借款本金: {self.cog.format_number(loan['amount'])} 幽靈幣（已歸還國庫）\n"
-                    f"利息支付: {self.cog.format_number(interest_amount)} 幽靈幣（國庫收益）\n"
-                    f"總支付: {self.cog.format_number(amount_with_interest)} 幽靈幣\n"
-                    f"```"
-                ),
-                inline=False
-            )
-            embed.add_field(
-                name="📊 新餘額",
-                value=(
-                    f"```yaml\n"
-                    f"手頭餘額: {balance[self.guild_id][self.user_id]:,.2f} 幽靈幣\n"
-                    f"```"
-                ),
-                inline=False
-            )
-            embed.set_footer(text="無債一身輕 · 幽幽子")
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            logger.info(f"✅ 用戶 {self.user_id} 成功還款 {amount_with_interest:.2f} 幽靈幣（本金: {loan['amount']:.2f}, 利息: {interest_amount:.2f}）")
-            
-        except Exception as e:
-            logger.error(f"❌ 還款失敗: {e}", exc_info=True)
-            try:
-                await interaction.followup.send("❌ 還款時發生錯誤，請稍後再試", ephemeral=True)
-            except:
-                pass
-    
-    @discord.ui.button(label="結束操作", style=discord.ButtonStyle.gray, emoji="❌", row=1)
-    async def close_bank(self, button: discord.ui.Button, interaction: discord.Interaction):
-        """結束操作"""
-        self.interaction_completed = True
-        self.stop()  # 停止 View,防止超時繼續運行
+
+            balance[self.guild_id][self.user_id] -= amount_with_interest
+            personal_bank[self.guild_id][self.user_id]["loan"] = None
+            if self.guild_id in server_vault and "vault" in server_vault[self.guild_id]:
+                server_vault[self.guild_id]["vault"]["total"] += loan["amount"]
+
+        await self.cog.data_manager.save_all_async()
+        await self.cog.log_transaction(self.guild_id, self.user_id, amount_with_interest, "repay")
         
-        for item in self.children:
-            item.disabled = True
-        
-        embed = discord.Embed(
-            title="🌸 金庫已關閉",
-            description="呼呼～金庫操作已結束!\n櫻花隨風飄散,期待下次再見～",
-            color=discord.Color.from_rgb(255, 182, 193)
-        )
-        embed.set_footer(
-            text="願櫻花守護你的財富 · 幽幽子",
-            icon_url=self.cog.bot.user.avatar.url if self.cog.bot.user and self.cog.bot.user.avatar else None
-        )
-        
-        # 🔧 修復：先回應 interaction，再嘗試編輯原始訊息
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-        
-        # 🔧 修復：不嘗試編輯 ephemeral 消息
-        if not self.is_ephemeral and self.message:
-            try:
-                # 獲取原始 embed
-                original_embed = interaction.message.embeds[0] if interaction.message.embeds else None
-                if original_embed:
-                    await self.message.edit(embed=original_embed, view=self)
-                    logger.info("✅ 已禁用原始訊息按鈕")
-            except discord.errors.NotFound:
-                logger.warning("⚠️ 原始訊息已被刪除")
-            except discord.errors.Forbidden:
-                logger.warning("⚠️ 無法編輯原始訊息（權限不足）")
-            except Exception as e:
-                logger.error(f"❌ 編輯原始訊息失敗: {e}")
-        
-        logger.info(f"👋 用戶 {self.user_id} 結束金庫操作")
+        credit_cog = self.cog.bot.get_cog("Credit")
+        if credit_cog: await credit_cog.recover_on_repay(self.guild_id, self.user_id)
+
+        await self.update_main_embed(interaction)
+        await interaction.followup.send(f"還款成功！支付了 {self.cog.format_number(amount_with_interest)} 幽靈幣", ephemeral=True)
+
+    @discord.ui.button(label="結束", style=discord.ButtonStyle.gray, emoji="❌", row=1)
+    async def close_bank(self, button, interaction):
+        for item in self.children: item.disabled = True
+        embed = discord.Embed(title="🌸 金庫已關閉", description="期待下次再見～", color=discord.Color.from_rgb(255, 182, 193))
+        embed.set_footer(text="願櫻花守護你的財富 · 幽幽子", icon_url=self.cog.bot.user.display_avatar.url)
+        await interaction.response.edit_message(embed=embed, view=self)
+        self.stop()
 
 
-# ----------- Modal: 存款 -----------
 class DepositModal(Modal):
-    """存款模態窗口"""
-    
-    def __init__(self, cog: ServerBank, guild_id: str, user_id: str, view: BankButtonsView):
-        super().__init__(title="🌸 存入幽靈幣至個人金庫")
-        self.cog = cog
-        self.guild_id = guild_id
-        self.user_id = user_id
-        self.view = view
-        
-        self.add_item(InputText(
-            label="存款金額",
-            placeholder="請輸入要存入的幽靈幣數量...",
-            style=discord.InputTextStyle.short,
-            required=True
-        ))
-    
-    async def callback(self, interaction: discord.Interaction):
-        # ✅ 立即 defer，防止超時
+    def __init__(self, cog, guild_id, user_id, view):
+        super().__init__(title="🌸 存入幽靈幣")
+        self.cog, self.guild_id, self.user_id, self.view = cog, guild_id, user_id, view
+        self.add_item(InputText(label="存款金額", placeholder="輸入數量...", required=True))
+
+    async def callback(self, interaction):
+        if not await self.cog.data_manager.check_backup_status(interaction, "bank_deposit"): return
         await interaction.response.defer(ephemeral=True)
         
         try:
-            # 解析金額
-            try:
-                amount = Decimal(self.children[0].value.strip())
-                if amount <= 0:
-                    raise ValueError("金額必須為正數")
-                amount = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-            except (InvalidOperation, ValueError):
-                embed = discord.Embed(
-                    title="❌ 金額格式錯誤",
-                    description="請輸入有效的正數金額!",
-                    color=discord.Color.red()
-                )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+            amount = Decimal(self.children[0].value.strip())
+            if amount <= 0: raise ValueError
+            amount = float(amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+        except:
+            await interaction.followup.send("金額格式錯誤!", ephemeral=True)
+            return
+
+        async with self.cog.data_manager.balance_lock:
+            balance = self.cog.data_manager.balance
+            personal_bank = self.cog.data_manager.personal_bank
+            user_balance = balance.get(self.guild_id, {}).get(self.user_id, 0.0)
+            
+            if user_balance < amount:
+                await interaction.followup.send(f"手頭只有 {user_balance:,.2f}，餘額不足!", ephemeral=True)
                 return
-            
-            # 使用內存數據並加鎖
-            async with self.cog.data_manager.balance_lock:
-                balance = self.cog.data_manager.balance
-                personal_bank = self.cog.data_manager._load_json("economy/personal_bank.json", {})
-                
-                # 確保結構存在
-                if self.guild_id not in balance or self.user_id not in balance[self.guild_id]:
-                    balance.setdefault(self.guild_id, {})[self.user_id] = 0.0
-                
-                if self.guild_id not in personal_bank or self.user_id not in personal_bank[self.guild_id]:
-                    personal_bank.setdefault(self.guild_id, {})[self.user_id] = {"balance": 0.0, "loan": None}
-                
-                user_balance = Decimal(str(balance[self.guild_id][self.user_id]))
-                
-                # 檢查餘額
-                if user_balance <= 0:
-                    embed = discord.Embed(
-                        title="🌸 手頭無幽靈幣",
-                        description="呼呼～你手頭上沒有幽靈幣呢...\n無法存入金庫哦!",
-                        color=discord.Color.red()
-                    )
-                    embed.set_footer(text="先賺點幽靈幣吧 · 幽幽子")
-                    await interaction.followup.send(embed=embed, ephemeral=True)
-                    return
-                
-                if user_balance < amount:
-                    embed = discord.Embed(
-                        title="🌸 餘額不足",
-                        description=(
-                            f"呼呼～你的手頭餘額只有 **{user_balance:,.2f}** 幽靈幣,\n"
-                            f"不足以存入 **{float(amount):,.2f}** 幽靈幣呢..."
-                        ),
-                        color=discord.Color.red()
-                    )
-                    embed.add_field(
-                        name="💡 建議",
-                        value=f"• 你可以存入最多 {user_balance:,.2f} 幽靈幣",
-                        inline=False
-                    )
-                    embed.set_footer(text="量入為出 · 幽幽子")
-                    await interaction.followup.send(embed=embed, ephemeral=True)
-                    return
-                
-                # 執行存款
-                old_user_balance = balance[self.guild_id][self.user_id]
-                old_bank_balance = personal_bank[self.guild_id][self.user_id]["balance"]
-                
-                balance[self.guild_id][self.user_id] -= float(amount)
-                personal_bank[self.guild_id][self.user_id]["balance"] += float(amount)
-                
-                logger.info(f"💰 存款金額: {float(amount):.2f}")
-                logger.info(f"👤 手頭餘額: {old_user_balance:.2f} -> {balance[self.guild_id][self.user_id]:.2f}")
-                logger.info(f"🏦 個人金庫: {old_bank_balance:.2f} -> {personal_bank[self.guild_id][self.user_id]['balance']:.2f}")
-                
-                # 保存數據（balance 通過 save_all 保存，personal_bank 直接保存）
-                try:
-                    self.cog.data_manager._save_json("economy/personal_bank.json", personal_bank)
-                    self.cog.data_manager.save_all()  # 保存內存中的 balance
-                    logger.info(f"✅ 數據已保存")
-                except Exception as e:
-                    logger.error(f"❌ 保存數據失敗: {e}", exc_info=True)
-                
-                self.cog.log_transaction(self.guild_id, self.user_id, float(amount), "deposit")
-            
-            # 更新主界面
-            await self.view.update_main_embed(interaction)
-            
-            # 成功消息
-            embed = discord.Embed(
-                title="🌸 存款成功!",
-                description=f"呼呼～你已將 **{float(amount):,.2f}** 幽靈幣存入個人金庫!",
-                color=discord.Color.from_rgb(144, 238, 144)
-            )
-            embed.add_field(
-                name="📊 新餘額",
-                value=(
-                    f"```yaml\n"
-                    f"手頭餘額: {balance[self.guild_id][self.user_id]:,.2f} 幽靈幣\n"
-                    f"個人金庫: {self.cog.format_number(personal_bank[self.guild_id][self.user_id]['balance'])} 幽靈幣\n"
-                    f"```"
-                ),
-                inline=False
-            )
-            embed.set_footer(text="櫻花守護你的財富 · 幽幽子")
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            
-            logger.info(f"💰 用戶 {self.user_id} 存款 {float(amount):.2f} 幽靈幣")
-            
-        except Exception as e:
-            logger.error(f"❌ 存款失敗: {e}", exc_info=True)
-            try:
-                await interaction.followup.send("❌ 存款時發生錯誤，請稍後再試", ephemeral=True)
-            except:
-                pass
+
+            balance[self.guild_id][self.user_id] -= amount
+            personal_bank.setdefault(self.guild_id, {}).setdefault(self.user_id, {"balance": 0.0, "loan": None})["balance"] += amount
+
+        await self.cog.data_manager.save_all_async()
+        await self.cog.log_transaction(self.guild_id, self.user_id, amount, "deposit")
+        await self.view.update_main_embed(interaction)
+        await interaction.followup.send(f"成功存入 **{amount:,.2f}** 幽靈幣!", ephemeral=True)
 
 
-# ----------- Modal: 取款 -----------
 class WithdrawModal(Modal):
-    """取款模態窗口"""
-    
-    def __init__(self, cog: ServerBank, guild_id: str, user_id: str, view: BankButtonsView):
-        super().__init__(title="🌸 從個人金庫取出幽靈幣")
-        self.cog = cog
-        self.guild_id = guild_id
-        self.user_id = user_id
-        self.view = view
-        
-        self.add_item(InputText(
-            label="取款金額",
-            placeholder="請輸入要取出的幽靈幣數量...",
-            style=discord.InputTextStyle.short,
-            required=True
-        ))
-    
-    async def callback(self, interaction: discord.Interaction):
-        # ✅ 立即 defer
+    def __init__(self, cog, guild_id, user_id, view):
+        super().__init__(title="🌸 取出幽靈幣")
+        self.cog, self.guild_id, self.user_id, self.view = cog, guild_id, user_id, view
+        self.add_item(InputText(label="取款金額", placeholder="輸入數量...", required=True))
+
+    async def callback(self, interaction):
+        if not await self.cog.data_manager.check_backup_status(interaction, "bank_withdraw"): return
         await interaction.response.defer(ephemeral=True)
         
         try:
-            # 解析金額
-            try:
-                amount = Decimal(self.children[0].value.strip())
-                if amount <= 0:
-                    raise ValueError("金額必須為正數")
-                amount = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-            except (InvalidOperation, ValueError):
-                embed = discord.Embed(
-                    title="❌ 金額格式錯誤",
-                    description="請輸入有效的正數金額!",
-                    color=discord.Color.red()
-                )
-                await interaction.followup.send(embed=embed, ephemeral=True)
+            amount = Decimal(self.children[0].value.strip())
+            if amount <= 0: raise ValueError
+            amount = float(amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+        except:
+            await interaction.followup.send("金額格式錯誤!", ephemeral=True)
+            return
+
+        async with self.cog.data_manager.balance_lock:
+            balance = self.cog.data_manager.balance
+            personal_bank = self.cog.data_manager.personal_bank
+            bank_balance = personal_bank.get(self.guild_id, {}).get(self.user_id, {}).get("balance", 0.0)
+            
+            if bank_balance < amount:
+                await interaction.followup.send(f"金庫只有 {self.cog.format_number(bank_balance)}，餘額不足!", ephemeral=True)
                 return
-            
-            # 使用內存數據並加鎖
-            async with self.cog.data_manager.balance_lock:
-                balance = self.cog.data_manager.balance
-                personal_bank = self.cog.data_manager._load_json("economy/personal_bank.json", {})
-                
-                bank_balance = Decimal(str(personal_bank.get(self.guild_id, {}).get(self.user_id, {}).get("balance", 0.0)))
-                
-                # 檢查金庫餘額
-                if bank_balance < amount:
-                    embed = discord.Embed(
-                        title="🌸 金庫餘額不足",
-                        description=(
-                            f"呼呼～你的個人金庫只有 **{self.cog.format_number(float(bank_balance))}** 幽靈幣,\n"
-                            f"不足以取出 **{float(amount):,.2f}** 幽靈幣呢..."
-                        ),
-                        color=discord.Color.red()
-                    )
-                    embed.add_field(
-                        name="💡 建議",
-                        value=f"• 你可以取出最多 {self.cog.format_number(float(bank_balance))} 幽靈幣",
-                        inline=False
-                    )
-                    embed.set_footer(text="金庫餘額有限 · 幽幽子")
-                    await interaction.followup.send(embed=embed, ephemeral=True)
-                    return
-                
-                # 執行取款
-                old_user_balance = balance.get(self.guild_id, {}).get(self.user_id, 0.0)
-                old_bank_balance = personal_bank[self.guild_id][self.user_id]["balance"]
-                
-                personal_bank[self.guild_id][self.user_id]["balance"] -= float(amount)
-                
-                # 確保用戶在 balance 中存在
-                if self.guild_id not in balance:
-                    balance[self.guild_id] = {}
-                if self.user_id not in balance[self.guild_id]:
-                    balance[self.guild_id][self.user_id] = 0.0
-                    
-                balance[self.guild_id][self.user_id] += float(amount)
-                
-                logger.info(f"💵 取款金額: {float(amount):.2f}")
-                logger.info(f"🏦 個人金庫: {old_bank_balance:.2f} -> {personal_bank[self.guild_id][self.user_id]['balance']:.2f}")
-                logger.info(f"👤 手頭餘額: {old_user_balance:.2f} -> {balance[self.guild_id][self.user_id]:.2f}")
-                
-                # 保存數據
-                try:
-                    self.cog.data_manager._save_json("economy/personal_bank.json", personal_bank)
-                    self.cog.data_manager.save_all()  # 保存內存中的 balance
-                    logger.info(f"✅ 數據已保存")
-                except Exception as e:
-                    logger.error(f"❌ 保存數據失敗: {e}", exc_info=True)
-                
-                self.cog.log_transaction(self.guild_id, self.user_id, float(amount), "withdraw")
-            
-            # 更新主界面
-            await self.view.update_main_embed(interaction)
-            
-            # 成功消息
-            embed = discord.Embed(
-                title="🌸 取款成功!",
-                description=f"呼呼～你已從個人金庫取出 **{float(amount):,.2f}** 幽靈幣!",
-                color=discord.Color.from_rgb(144, 238, 144)
-            )
-            embed.add_field(
-                name="📊 新餘額",
-                value=(
-                    f"```yaml\n"
-                    f"手頭餘額: {balance[self.guild_id][self.user_id]:,.2f} 幽靈幣\n"
-                    f"個人金庫: {self.cog.format_number(personal_bank[self.guild_id][self.user_id]['balance'])} 幽靈幣\n"
-                    f"```"
-                ),
-                inline=False
-            )
-            embed.set_footer(text="櫻花守護你的財富 · 幽幽子")
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            
-            logger.info(f"💵 用戶 {self.user_id} 取款 {float(amount):.2f} 幽靈幣")
-            
-        except Exception as e:
-            logger.error(f"❌ 取款失敗: {e}", exc_info=True)
-            try:
-                await interaction.followup.send("❌ 取款時發生錯誤，請稍後再試", ephemeral=True)
-            except:
-                pass
+
+            personal_bank[self.guild_id][self.user_id]["balance"] -= amount
+            balance.setdefault(self.guild_id, {}).setdefault(self.user_id, 0.0)
+            balance[self.guild_id][self.user_id] += amount
+
+        await self.cog.data_manager.save_all_async()
+        await self.cog.log_transaction(self.guild_id, self.user_id, amount, "withdraw")
+        await self.view.update_main_embed(interaction)
+        await interaction.followup.send(f"成功取出 **{amount:,.2f}** 幽靈幣!", ephemeral=True)
 
 
-# ----------- Modal: 借貸 -----------
 class BorrowModal(Modal):
-    """借貸模態窗口"""
-    
-    def __init__(self, cog: ServerBank, guild_id: str, user_id: str, has_loan: bool, view: BankButtonsView):
-        super().__init__(title="🌸 向國庫借貸幽靈幣")
-        self.cog = cog
-        self.guild_id = guild_id
-        self.user_id = user_id
-        self.has_loan = has_loan
-        self.view = view
-        
-        self.add_item(InputText(
-            label="借貸金額",
-            placeholder="請輸入要借貸的幽靈幣數量...",
-            style=discord.InputTextStyle.short,
-            required=True
-        ))
-    
-    async def callback(self, interaction: discord.Interaction):
-        # ✅ 立即 defer
+    def __init__(self, cog, guild_id, user_id, has_loan, view):
+        super().__init__(title="🌸 向國庫借貸")
+        self.cog, self.guild_id, self.user_id, self.has_loan, self.view = cog, guild_id, user_id, has_loan, view
+        self.add_item(InputText(label="借貸金額", placeholder="輸入數量...", required=True))
+
+    async def callback(self, interaction):
+        if not await self.cog.data_manager.check_backup_status(interaction, "bank_borrow"): return
         await interaction.response.defer(ephemeral=True)
         
         try:
-            # 解析金額
-            try:
-                amount = Decimal(self.children[0].value.strip())
-                if amount <= 0:
-                    raise ValueError("金額必須為正數")
-                amount = amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-            except (InvalidOperation, ValueError):
-                embed = discord.Embed(
-                    title="❌ 金額格式錯誤",
-                    description="請輸入有效的正數金額!",
-                    color=discord.Color.red()
-                )
-                await interaction.followup.send(embed=embed, ephemeral=True)
-                return
+            amount = Decimal(self.children[0].value.strip())
+            if amount <= 0: raise ValueError
+            amount = float(amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+        except:
+            await interaction.followup.send("金額格式錯誤!", ephemeral=True)
+            return
+
+        if self.cog.is_blacklisted(self.guild_id, self.user_id):
+            await interaction.followup.send("你在黑名單中，無法借貸!", ephemeral=True)
+            return
+
+        credit_score = self.cog.get_credit(self.guild_id, self.user_id)
+        if credit_score <= 0:
+            await interaction.followup.send("信譽歸零，無法借貸!", ephemeral=True)
+            return
+
+        server_vault = self.cog.data_manager.server_vault
+        vault_total = server_vault.get(self.guild_id, {}).get("vault", {}).get("total", 0.0)
+        if vault_total < amount:
+            await interaction.followup.send(f"國庫餘額不足 (只有 {self.cog.format_number(vault_total)})", ephemeral=True)
+            return
+
+        interest_rate = calculate_interest_rate(amount)
+        credit_penalty_applied = False
+
+        async with self.cog.data_manager.balance_lock:
+            balance = self.cog.data_manager.balance
+            personal_bank = self.cog.data_manager.personal_bank
             
-            # 載入數據
-            async with self.cog.data_manager.balance_lock:
-                balance = self.cog.data_manager.balance
-                personal_bank = self.cog.data_manager._load_json("economy/personal_bank.json", {})
-                server_vault = self.cog.data_manager._load_json("economy/server_vault.json", {})
-            
-            # 從 server_vault 獲取國庫總額
-            vault_total = server_vault.get(self.guild_id, {}).get("vault", {}).get("total", 0.0)
-            max_borrow_amount = min(vault_total * 0.5, 1000000.0)
-            
-            # 檢查國庫是否有足夠的錢
-            if vault_total < float(amount):
-                embed = discord.Embed(
-                    title="🌸 國庫餘額不足",
-                    description=(
-                        f"呼呼～國庫目前只有 **{self.cog.format_number(vault_total)}** 幽靈幣,\n"
-                        f"不足以借出 **{float(amount):,.2f}** 幽靈幣呢..."
-                    ),
-                    color=discord.Color.red()
-                )
-                embed.add_field(
-                    name="💡 說明",
-                    value=f"• 國庫餘額不足，請聯繫管理員補充國庫",
-                    inline=False
-                )
-                embed.set_footer(text="國庫需要補充 · 幽幽子")
-                await interaction.followup.send(embed=embed, ephemeral=True)
-                return
-            
-            # 檢查借貸額度
-            if float(amount) > max_borrow_amount:
-                embed = discord.Embed(
-                    title="🌸 超出可借額度",
-                    description=(
-                        f"呼呼～你想借 **{float(amount):,.2f}** 幽靈幣,\n"
-                        f"但目前最多只能借 **{self.cog.format_number(max_borrow_amount)}** 幽靈幣呢..."
-                    ),
-                    color=discord.Color.red()
-                )
-                embed.add_field(
-                    name="💡 說明",
-                    value=(
-                        f"```yaml\n"
-                        f"國庫總額: {self.cog.format_number(vault_total)} 幽靈幣\n"
-                        f"可借額度: {self.cog.format_number(max_borrow_amount)} 幽靈幣\n"
-                        f"```\n"
-                        f"• 可借額度為國庫的50%或100萬，取較小值"
-                    ),
-                    inline=False
-                )
-                embed.set_footer(text="量力而行 · 幽幽子")
-                await interaction.followup.send(embed=embed, ephemeral=True)
-                return
-            
-            # 執行借貸 - 從國庫扣款
-            if self.guild_id not in server_vault:
-                server_vault[self.guild_id] = {"vault": {"total": 0.0, "contributions": {}}}
-            if "vault" not in server_vault[self.guild_id]:
-                server_vault[self.guild_id]["vault"] = {"total": 0.0, "contributions": {}}
-            
-            # 確保用戶數據結構存在
-            if self.guild_id not in balance:
-                balance[self.guild_id] = {}
-            if self.user_id not in balance[self.guild_id]:
-                balance[self.guild_id][self.user_id] = 0.0
-            
-            if self.guild_id not in personal_bank:
-                personal_bank[self.guild_id] = {}
-            if self.user_id not in personal_bank[self.guild_id]:
-                personal_bank[self.guild_id][self.user_id] = {"balance": 0.0, "loan": None}
-            
-            # 從國庫扣款，給用戶增加餘額
-            old_user_balance = balance.get(self.guild_id, {}).get(self.user_id, 0.0)
-            old_vault_total = server_vault[self.guild_id]["vault"]["total"]
-            
-            server_vault[self.guild_id]["vault"]["total"] -= float(amount)
-            
-            # 確保用戶在 balance 中存在
-            if self.guild_id not in balance:
-                balance[self.guild_id] = {}
-            if self.user_id not in balance[self.guild_id]:
-                balance[self.guild_id][self.user_id] = 0.0
-                
-            balance[self.guild_id][self.user_id] += float(amount)
-            
-            logger.info(f"💰 借貸金額: {float(amount):.2f}")
-            logger.info(f"👤 用戶餘額: {old_user_balance:.2f} -> {balance[self.guild_id][self.user_id]:.2f}")
-            logger.info(f"🏛️ 國庫餘額: {old_vault_total:.2f} -> {server_vault[self.guild_id]['vault']['total']:.2f}")
-            
+            # 再次借貸扣信譽
+            existing_loan = personal_bank.get(self.guild_id, {}).get(self.user_id, {}).get("loan")
+            if existing_loan and not existing_loan.get("repaid"):
+                self.cog.adjust_credit(self.guild_id, self.user_id, -3, "有未還貸款時再次借貸")
+                credit_penalty_applied = True
+                credit_score = self.cog.get_credit(self.guild_id, self.user_id)
+
+            server_vault[self.guild_id]["vault"]["total"] -= amount
+            balance.setdefault(self.guild_id, {}).setdefault(self.user_id, 0.0)
+            balance[self.guild_id][self.user_id] += amount
+
+            personal_bank.setdefault(self.guild_id, {}).setdefault(self.user_id, {"balance": 0.0, "loan": None})
             current_time = datetime.now(self.cog.tz)
             loan_data = personal_bank[self.guild_id][self.user_id].get("loan")
-            
-            # 累積借貸
+
             if loan_data and not loan_data.get("repaid"):
                 old_amount = loan_data["amount"]
-                loan_data["amount"] += float(amount)
-                loan_data["last_borrowed_at"] = current_time.isoformat()
+                new_total = old_amount + amount
+                blended_rate = (old_amount * loan_data["interest_rate"] + amount * interest_rate) / new_total
+                loan_data["amount"] = new_total
+                loan_data["interest_rate"] = round(blended_rate, 4)
                 loan_data["due_date"] = (current_time + timedelta(days=5)).isoformat()
-                is_additional = True
             else:
-                # 新借貸
                 loan_data = {
-                    "amount": float(amount),
-                    "interest_rate": 0.1,
+                    "amount": amount, "interest_rate": interest_rate,
                     "borrowed_at": current_time.isoformat(),
                     "due_date": (current_time + timedelta(days=5)).isoformat(),
-                    "repaid": False,
-                    "last_penalty_cycle": 0
+                    "repaid": False, "last_penalty_cycle": 0
                 }
-                is_additional = False
-                old_amount = 0
-            
             personal_bank[self.guild_id][self.user_id]["loan"] = loan_data
-            
-            # 保存數據（包括 server_vault）- 按順序保存確保數據一致性
-            try:
-                self.cog.data_manager._save_json("economy/balance.json", balance)
-                logger.info(f"✅ balance.json 已保存")
-            except Exception as e:
-                logger.error(f"❌ 保存 balance.json 失敗: {e}")
-            
-            try:
-                self.cog.data_manager._save_json("economy/personal_bank.json", personal_bank)
-                logger.info(f"✅ personal_bank.json 已保存")
-            except Exception as e:
-                logger.error(f"❌ 保存 personal_bank.json 失敗: {e}")
-            
-            try:
-                self.cog.data_manager._save_json("economy/server_vault.json", server_vault)
-                logger.info(f"✅ server_vault.json 已保存")
-            except Exception as e:
-                logger.error(f"❌ 保存 server_vault.json 失敗: {e}")
-            
-            self.cog.log_transaction(self.guild_id, self.user_id, float(amount), "borrow")
-            
-            # 更新主界面
-            await self.view.update_main_embed(interaction)
-            
-            # 成功消息
-            if is_additional:
-                embed = discord.Embed(
-                    title="🌸 借貸成功!債務已累積!",
-                    description=(
-                        f"呼呼～你又借貸了 **{float(amount):,.2f}** 幽靈幣!\n"
-                        f"⚠️ **債務已累積,請注意還款!**"
-                    ),
-                    color=discord.Color.from_rgb(255, 140, 0)
-                )
-                embed.add_field(
-                    name="📊 債務累積",
-                    value=(
-                        f"```diff\n"
-                        f"- 原有債務: {self.cog.format_number(old_amount)} 幽靈幣\n"
-                        f"+ 新增借貸: {float(amount):,.2f} 幽靈幣\n"
-                        f"= 總債務: {self.cog.format_number(loan_data['amount'])} 幽靈幣\n"
-                        f"```"
-                    ),
-                    inline=False
-                )
-            else:
-                embed = discord.Embed(
-                    title="🌸 借貸成功!",
-                    description=f"呼呼～你已借貸 **{float(amount):,.2f}** 幽靈幣!",
-                    color=discord.Color.from_rgb(255, 215, 0)
-                )
-            
-            # 顯示更新後的餘額
-            embed.add_field(
-                name="💰 你的最新餘額",
-                value=(
-                    f"```yaml\n"
-                    f"手頭餘額: {balance[self.guild_id][self.user_id]:,.2f} 幽靈幣\n"
-                    f"```"
-                ),
-                inline=False
-            )
-            
-            due_date = datetime.fromisoformat(loan_data["due_date"])
-            embed.add_field(
-                name="📋 借貸詳情",
-                value=(
-                    f"```yaml\n"
-                    f"總借貸: {self.cog.format_number(loan_data['amount'])} 幽靈幣\n"
-                    f"利息率: 10%\n"
-                    f"需還款: {self.cog.format_number(loan_data['amount'] * 1.1)} 幽靈幣\n"
-                    f"截止日期: {due_date.strftime('%Y-%m-%d %H:%M')}\n"
-                    f"```"
-                ),
-                inline=False
-            )
-            embed.add_field(
-                name="⚠️ 注意",
-                value="• 逾期未還將利息提升至20%\n• 逾期超過7天將金額×4",
-                inline=False
-            )
-            embed.set_footer(text="借貸需謹慎 · 幽幽子")
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            
-            logger.info(f"📜 用戶 {self.user_id} 借貸 {float(amount):.2f} (總: {loan_data['amount']:.2f})")
-            
-        except Exception as e:
-            logger.error(f"❌ 借貸失敗: {e}", exc_info=True)
-            try:
-                await interaction.followup.send("❌ 借貸時發生錯誤，請稍後再試", ephemeral=True)
-            except:
-                pass
+
+        await self.cog.data_manager.save_all_async()
+        await self.cog.log_transaction(self.guild_id, self.user_id, amount, "borrow")
+        await self.view.update_main_embed(interaction)
+
+        embed = discord.Embed(title="🌸 借貸成功！", color=discord.Color.from_rgb(255, 215, 0))
+        embed.add_field(name="💰 金額", value=f"**{amount:,.2f}** 幽靈幣", inline=False)
+        embed.add_field(name="📋 條款", value=f"```yaml\n利息: {interest_rate * 100:.0f}%\n需還: {self.cog.format_number(loan_data['amount'] * (1 + interest_rate))}\n截止: {datetime.fromisoformat(loan_data['due_date']).strftime('%Y-%m-%d')}\n```", inline=False)
+        if credit_penalty_applied:
+            embed.add_field(name="💳 信譽警告", value=f"⚠️ 再次借貸，信譽 **-3**！\n{self.cog._credit_bar(credit_score)}", inline=False)
+        
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
 
-def setup(bot: discord.Bot):
-    """註冊櫻花金庫"""
+def setup(bot):
     bot.add_cog(ServerBank(bot))
-    logger.info("🌸 櫻花金庫模組已載入")
