@@ -4,10 +4,11 @@ import asyncio
 import random
 import logging
 import os
-# [Debug 修復 #1] 補上遺漏的 datetime，否則 fromisoformat 會拋出 NameError 崩潰！
 from datetime import datetime, timedelta 
 
 logger = logging.getLogger("SakuraBot.Work")
+# [Debug 修復] 引入專門的 Commands 錯誤日誌記錄器
+commands_error_logger = logging.getLogger("SakuraBot.CommandsError")
 
 WORK_COOLDOWN_SECONDS = 3600  # 1 小時
 
@@ -29,7 +30,6 @@ class Work(commands.Cog):
     def __init__(self, bot: discord.Bot):
         self.bot = bot
         self.data_manager = bot.data_manager
-        self.logger = logging.getLogger(__name__)
 
     @discord.slash_command(
         name="work",
@@ -41,7 +41,7 @@ class Work(commands.Cog):
             if not await self.data_manager.check_backup_status(ctx, "work"):
                 return
 
-            await ctx.defer(ephemeral=True)
+            await ctx.defer(ephemeral=False)
 
             if ctx.guild is None:
                 await ctx.respond(
@@ -68,8 +68,11 @@ class Work(commands.Cog):
             jobs_data = config_data.get("jobs", {})
 
             user_info = user_config.setdefault(guild_id, {}).setdefault(user_id, {})
+            
+            # [優化] 統一獲取 job_name 並清理冗餘的判斷邏輯
+            job_name = user_info.get("job")
 
-            if not user_info.get("job"):
+            if not job_name:
                 await ctx.respond(
                     embed=discord.Embed(
                         title="🌸 尚未選擇職業",
@@ -80,8 +83,6 @@ class Work(commands.Cog):
                 )
                 return
 
-            job_name = user_info["job"]
-
             if job_name == "賭徒":
                 await ctx.respond(
                     embed=discord.Embed(
@@ -89,6 +90,17 @@ class Work(commands.Cog):
                         description=random.choice(GAMBLER_QUOTES),
                         color=discord.Color.red()
                     ).set_footer(text="幽幽子：賭徒無法透過工作賺取幽靈幣，只能靠命運！"),
+                    ephemeral=False
+                )
+                return
+            
+            if job_name == "釣魚佬":
+                await ctx.respond(
+                    embed=discord.Embed(
+                        title="🌸 無法工作",
+                        description="幽幽子：釣魚佬只是副職，沒有正職是無法工作的哦！\n請先用 `/choose_job` 選擇一個正常職業來賺錢吧！",
+                        color=discord.Color.red()
+                    ).set_footer(text="幽幽子：副職是不能單獨賺錢的～"),
                     ephemeral=True
                 )
                 return
@@ -106,7 +118,6 @@ class Work(commands.Cog):
                 return
 
             # [Debug 修復] 將 MP (壓力) 邏輯徹底替換為 Stamina (體力) 系統
-            # 向下相容：如果沒有 stamina 欄位，預設為 20
             if "stamina" not in user_info:
                 user_info["stamina"] = 20
             if "max_stamina" not in user_info:
@@ -114,7 +125,7 @@ class Work(commands.Cog):
                 
             current_stamina = user_info["stamina"]
             max_stamina = user_info["max_stamina"]
-            stamina_cost = job_data.get("stamina_cost", 2) # 預設消耗 2 點體力
+            stamina_cost = job_data.get("stamina_cost", 2)
 
             if current_stamina < stamina_cost:
                 await ctx.respond(
@@ -138,9 +149,6 @@ class Work(commands.Cog):
             if last_cooldown_str:
                 try:
                     cooldown_time = datetime.fromisoformat(last_cooldown_str)
-                    # [Debug 修復 #2] 移除冗餘的 tzinfo 檢查
-                    # 因為 discord.utils.utcnow() 是 Naive UTC，isoformat() 存檔的也是 Naive UTC
-                    # 兩者直接比較即可，不需要替換 tzinfo (utcnow().tzinfo 本身就是 None)
                 except Exception:
                     cooldown_time = None
 
@@ -153,7 +161,7 @@ class Work(commands.Cog):
                             description=f"幽幽子：你還需等待 {minutes} 分鐘 {seconds} 秒才能再次工作！",
                             color=discord.Color.orange()
                         ).set_footer(text=f"職業：{job_name}"),
-                        ephemeral=True
+                        ephemeral=False
                     )
                     return
 
@@ -177,7 +185,7 @@ class Work(commands.Cog):
             # [Debug 修復] 鎖釋放後，統一呼叫 save_all_async 保存所有數據
             await self.data_manager.save_all_async()
             
-            self.logger.info(
+            logger.info(
                 f"💼 用戶 {user_id} 工作獲得 {reward} 幽靈幣，消耗 {stamina_cost} 體力"
                 f"（餘額: {old_balance:.2f} → {new_balance:.2f}，體力: {current_stamina} → {final_stamina}）"
             )
@@ -191,7 +199,7 @@ class Work(commands.Cog):
                     if recovered:
                         credit_note = f"\n💳 工作努力有回報！信譽 **+1** → **{new_c}/10**"
                 except Exception as e:
-                    self.logger.warning(f"⚠️ 信譽恢復失敗: {e}")
+                    logger.warning(f"⚠️ 信譽恢復失敗: {e}")
 
             embed = discord.Embed(
                 title="🌸 工作成功！🌸",
@@ -206,27 +214,34 @@ class Work(commands.Cog):
                 color=discord.Color.from_rgb(205, 133, 232)
             ).set_footer(text="幽幽子：賞花、工作、吃點心三連發！")
 
-            await ctx.respond(embed=embed, ephemeral=True)
+            await ctx.respond(embed=embed, ephemeral=False)
 
         except Exception as e:
-            self.logger.exception(f"work 指令錯誤: {e}")
+            logger.exception(f"work 指令錯誤: {e}")
             try:
-                # [Debug 修復] 使用 Pycord 標準的 ctx.response.is_done()
+                error_embed = discord.Embed(
+                    title="🌸 工作系統錯誤",
+                    description=(
+                        "嗚嗚...幽幽子在準備工具時摔了一跤...\n"
+                        "執行工作時發生未知錯誤，請稍後再試一次 `/work`。\n\n"
+                        "**如果反覆出現此問題，請務必使用 `/feedback` 回報！**"
+                    ),
+                    color=discord.Color.dark_red()
+                ).set_footer(text="冥界的小故障，請見諒 · 幽幽子")
+
                 if not ctx.response.is_done():
-                    await ctx.respond(
-                        embed=discord.Embed(
-                            title="🌸 工作系統錯誤",
-                            description="執行工作時發生錯誤，請稍後再試或用 /feedback 回報幽幽子。",
-                            color=discord.Color.red()
-                        ).set_footer(text="幽幽子：冥界也會有小故障哦～"),
-                        ephemeral=True
-                    )
+                    await ctx.respond(embed=error_embed, ephemeral=True)
                 else:
-                    await ctx.followup.send("❌ 工作系統發生錯誤！", ephemeral=True)
-            except Exception:
-                pass
+                    await ctx.followup.send(embed=error_embed, ephemeral=True)
+            except Exception as e2:
+                # [Debug 修復] 使用 commands_error_logger 記錄發送錯誤訊息失敗的錯誤
+                commands_error_logger.error(
+                    f"work: 發送錯誤訊息失敗 - 原始錯誤: {e}, 發送錯誤: {e2}", 
+                    exc_info=True
+                )
 
 
 def setup(bot: discord.Bot):
     bot.add_cog(Work(bot))
-    logger.info("Work Cog loaded successfully")
+    # [修復] 將英文日誌改為符合幽幽子風格的中文日誌
+    logger.info("🌸 冥界工作系統已於櫻花樹下甦醒")
